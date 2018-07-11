@@ -1,0 +1,3890 @@
+                        
+                        
+                 #### INGRES ###
+
+
+
+
+# INSTANCE: what is it?
+
+	#An Ingres Instance
+		
+		#An Ingres instance consists of a set of installed products that share a unique system-file location, ownership, and instance name, together with any data files created by these products.
+		
+		#Multiple copies of Ingres can be installed on a single server and run simultaneously. Each copy of Ingres is referred to as an Ingres instance.
+
+		#An instance is classified as either a server installation or a client installation.
+
+
+
+
+# FILES: types of files
+
+  #An Ingres instance includes the following files:
+
+    # System files (executables)
+  
+    # Database files
+      These files include the master database and user databases. The master database, iidbdb, stores information about all databases, their locations, and the users who can access them.
+    
+    # Transaction log file
+      This file stores uncommitted transactions and buffers committed transactions before they are written to the database. Ingres uses one logical instance-wide log file. The file is circular and wraps when it encounters the physical end-of-file.
+      Each logical log file may consist of up to 16 physical disk files, referred to as partitions, which helps to alleviate I/O bottlenecks. To ensure that no committed transactions are lost if the primary transaction log devices fail, Ingres can maintain a backup of the primary transaction log file, also known as a dual log, on the storage locations you specify.
+
+    # Checkpoint files, journal files, dump files
+      Checkpoint, journal, and dump files provide for data recovery in case of a database disk failure.
+      Checkpoints alone provide for data recovery up to the time of the checkpoint.
+      Checkpoints and journals provide for recovery up to the time of failure.
+      Checkpoint, journal, and dump files provide online checkpoints.
+    
+    # Temporary work files
+      Work files are temporary files created during external sorts and other DBMS Server operations that require large amounts of temporary file space.
+
+
+
+
+# VARIABLES: II_SYSTEM
+
+  #The location you choose for Ingres system (executable and script) files will also contain the error log and configuration files. Choose a location that has adequate disk space (at least 2 GB free).
+
+  #If you lose this location, Ingres will fail. Replace the failed component, restore the file system from backup. Ingres will recover on startup.
+
+  #If you fill this file system, Ingres will fail. Free some space or allocate additional space, and restart Ingres if necessary.
+
+
+
+
+# VARIABLES: II_DATABASE
+
+  #The instance default data location contains the master database (iidbdb), which stores information about all databases, their locations, and the users that can access them. By default, this location also contains all user databases, unless the database administrator specifies an alternate location for a database when creating it.
+
+  #When choosing the data location, consider the following:
+    # Place database files on a separate disk from checkpoint, journal, and dump files to maximize chances for data recovery.
+    # Place database files on a separate disk from the transaction log files to improve system performance by distributing disk I/O.
+    # Place database files on a separate disk from the work locations. Doing so prevents work operations that might fill the file system from having an impact on the data location, reduces fragmentation of both locations, and ensures sufficient reading bandwidth for the data location.
+    ...
+
+  #If you lose this location, Ingres will fail. You must replace the failed component, recreate the directory structure, and recover from checkpoint and journals all Ingres databases that use this location.
+
+  #If you fill this file system, Ingres will fail. Free some space or allocate additional space, and restart Ingres if necessary.
+
+
+
+
+# VARIABLES: II_CHECKPOINT, II_JOURNAL, II_DUMP
+
+  #Checkpoint files, journal files, and dump files can reside on the same device because journals and dump files are useful in recovery only if the associated checkpoint is also available. By default, the install program places journal and dump files in the same location as the checkpoint files.
+  
+  #If you lose the Dump location or fill the file system, Ingres will fail as it attempts to update the "dump copy" of each database configuration file. You must recreate these directories, copy each database configuration file from the database root data directory and restart Ingres.  
+
+  #If you lose the Journal location, any journaled databases using it will cause the archiver to shut down. You then have between a minute and an hour (before the transaction log file fills up) to disable journaling on each affected database. Then you must replace the failed component and rebuild the directory structure. To restart journaling you must run an offline checkpoint on each database. If you fill the journal file system, free disk space and restart the archiver.
+
+  #If you lose the Checkpoint location, the online system is not affected. However, you now have no local backup for the databases using this location. Replace the failed component, rebuild the directory structure, and hope that you do not need a checkpoint until the next one is created. If you fill the checkpoint file system, the checkpoint process will fail. You must free sufficient space before the next checkpoint.
+  
+  
+  
+  
+# VARIABLES: II_WORK
+
+  #If you lose this location, replace the failed component, rebuild the directory structure, and restart Ingres. No files need to be recovered.
+
+  #If you fill this file system, Ingres will usually recover automatically as the query fails and the offending work file is removed.
+
+
+
+
+# ALERT LOG: view main
+
+tail -200 $II_SYSTEM/ingres/files/errlog.log
+
+
+
+
+# AUTHENTICATION: theory
+
+http://community.actian.com/forum/database-general/13532-ingres-authentication-query.html
+
+  #Each user MUST be defined to the Ingres database; 
+  #Password at the database level is optional and generally not used. 
+
+  #Before reaching the database though, Ingres first authenticates the user in one of a few ways: 
+    1) For local access (app and the DB are running in the same Ingres installation) no additional authentication is done    !!! SNOSKA1 !!!
+	2) For all remote access (machine to machine or even between Ingres installations on the same machine), there are 2 general options. 
+		2.1) The "normal" option is that the user and password are predefined in an Ingres vnode definition on the application/client machine and then authenticated on the database/server machine. This requires the user to have an OS account on the server machine. User and password must be passed from the client machine to the server for OS authentication on the server. In actualilty, there are several ways to pass userid and password from the client: 
+			2.1.1) vnode definition, 
+			2.1.2) command string dynamic vnode format
+			2.1.3) command/application remote user and password parameters.
+
+		2.2) Using of the installation passwords, which don't require OS accounts on the server. In a nutshell, a vnode on the server is set up to define the installation password (userid = *); the vnode name is the server machine name and is typically done by the DBA. On the client, a vnode is set up for connecting to the server (again, often set up by the DBA) with the userid = * and password set to the installation password. As long as the installation password on the client matches that of the server, the client's OS userid is then passed on to the DBMS for authentication against the database users....thus bypassing any OS authentication.                !!! SNOSKA2 !!!
+
+From an OpenROAD application perspective, one would typically just set up a vnode in the OpenROAD installation that points to the server and contains a userid and password that is authenticated against the server OS...or a userid of * and the installation password. For the non-installation-password approach, the userid and password can also be supplied by the application via remote user and password parameters on the connect and or by the user via the connection string (aka, dynamic vnode).
+
+Kerberos is also an option as a separate mechanism.
+
+Only valid Ingres users can access an Ingres installation. Ingres keeps information on its users in the iidbdb database. 
+
+    SNOSKA1) 
+There is an exception to this rule: certain users may be granted the privilige to impersonate other Ingres users when starting an Ingres utility or application. That is why it is not necessary for every Ingres user to have an OS account. This privilege, however, can only be granted as all-or-none: if you give it to somebody, he/she will be able to impersonate any other Ingres user, including the ingres account. Therefore, never grant it to anyone.
+
+    SNOSKA2)
+Server accepts their user ID on the client machine. In this case, the remote users do not have to be known to theOS on the server.
+    How will the server validate clients in this case? It is obvious that we need some kind of authentication: anybody can create an ingres account on a client machine, then he/she could connect to the installation as the ingres super-user.
+    This is where the installation password comes in: you set an installation password on the server. You then set this password on the client machines for those accountsthat you want to allow to access the server under their name on the client. The Ingres server can then authenticate the client by simply checking its installation password.
+
+
+
+
+# BU: ckpdb
+
+  #Examples
+  
+  #This command checkpoints and initiates journaling on the empdata database:
+ckpdb +j empdata;
+
+  #This command checkpoints the tables employee and dept:
+ckpdb empdata -table=employee,dept
+
+  #This command checkpoints the empdata database and retains only the newest checkpoint:
+ckpdb empdata -d;
+
+  #This command checkpoints the empdata database to tape:
+    #UNIX:
+ckpdb -m/dev/rmt0 empdata
+    #VMS:
+ckpdb -mMTA0: empdata
+
+
+  #Command Reference Guide (p. 42)
+  #Permission required: System administrator, DBA, or an Ingres user with the operator 
+  privilege. On VMS, to checkpoint a database in a group level installation, you must have 
+  the VMS CMKRNL privilege.
+
+  #The ckpdb command checkpoints a database or selected tables in a database.
+  #The command creates a new checkpoint for the specified database. If a table list is 
+  specified, only the tables on the table list are included in the checkpoint. If 
+  journaling is enabled for the database, all journal entries up to this checkpoint are   
+  marked as expired. Checkpointing takes place online (while the database is in use) by 
+  default and is transparent to users.
+  #The ckpdb command creates the checkpoint, and then copies (to the dump file) the log 
+  records of any changes to the database that occurred during the checkpoint procedure.   
+  Rollforwarddb uses the dump file when it recovers a database that was checkpointed 
+  online.
+  #Ingres knows whether the checkpoint is for a table or a database, and prevents attempts 
+  to roll forward an entire database from a table checkpoint. For table checkpoints, an 
+  infodb display of the mode field of the Checkpoint History for Journal and the Checkpoin
+  t History for Dump will indicate TABLE.
+  #By default, the ckpdb command sequentially checkpoints data locations one at a time. A 
+  database with more than one data location can be checkpointed in parallel.
+
+  #The ckpdb command has the following format:
+ckpdb dbname[/server_class] [-d] [+j|-j] [-l] [#m[n]] [-mdevice {, device}] [-table=tablename {, tablename}] [-v] [+w|-w] [-timeout=mm:ss] [keep=n] [-uusername] [-help]
+
+  dbname
+  #Specifies the database (one database name only) to be checkpointed, and the server_clas
+  s, if required, as described in Standard Flags and Parameters (see page 15).
+
+  -d
+  #Destroys all previous checkpoint and journal files.
+
+  +j|-j
+  #Enables or disables journaling for a database. When this flag is not specified, current 
+  journaling status of the database is maintained. If you specify this flag, the checkpoin
+  t is performed offline.
+
+  -l
+  #Takes an exclusive lock on the database. If you specify this flag, the checkpoint is 
+  performed offline (while the database is not in use), which requires the database to be 
+  locked.
+  #In an interactive session, if you specify the -l flag to perform the checkpoint offline
+  , then you can also specify the +w or -w flag.
+
+  #m[n]
+  #Checkpoints n locations at a time to disk, for a multi-location database.
+
+  -mdevice {, device}
+  #Writes the checkpoint to the specified tape device. If a list of tape devices is 
+  supplied, parallel checkpointing is used for a multi-location database.
+  #You can write one checkpoint only per tape. It is not necessary to mount the tape 
+  device. (When you restore a checkpoint that was created using the ckpdb -m command, you 
+  must use the rollforwarddb +c command.)
+  #The –m option is not valid on Windows.
+
+  -table=tablename {, tablename}
+  #Specifies a list of tables to be checkpointed. When specifying multiple tables, do not 
+  use a space between table names. Table checkpoint is not allowed for system catalogs.
+  #To use this parameter, the database must be journaled. Do not use the +j or –j flag 
+  with -table.
+
+  -v
+  #Indicates verbose mode, which displays interim messages as checkpointing proceeds.
+
+  +w|-w
+  #Waits or does not wait for the database to be free (not in use) before performing the 
+  checkpoint. Use this flag only if you have specified the +j, -j, or -l flag. The default 
+  is -w.
+  #This flag cannot be used if the checkpoint is performed online. An offline checkpoint   
+  requires the database to be locked.
+  #If you specify +w, ckpdb waits as long as necessary for the database to become free for 
+  locking and checkpointing. If you specify -w, and the database is busy, an error is 
+  returned.
+
+  -timeout=mm:ss
+  #Waits the specified number of minutes for active sessions to complete. If the active sessions do not complete in the specified time, the checkpoint is abandoned.
+  
+  -keep=n
+  #Preserves the specified number of last valid checkpoints (including current!) and deletes all older checkpoints, valid or invalid.
+  
+  -uusername
+  #Specifies the effective user for the session, as described in Standard Flags and 
+  Parameters (see page 15).
+
+  -help
+  #Displays command syntax online.
+
+
+
+
+# BU: rollforward
+
+  #Examples
+  
+  #1. The following command recovers the empdata DB from the target checkpoint and 
+  journal, and provides diagnostic information about all operations executed during the 
+  recovery process.
+  #Note: Both the journal and the checkpoint must be online before executing the command.
+rollforwarddb empdata -v
+
+  #2. This command recovers tables emp and emphist from the empdata database:
+rollforwarddb empdata -table=emp,emphist
+
+  #3. This command recovers tables emp and emphist from the empdata database without 
+  recovering the indexes:
+rollforwarddb empdata -table=emp,emphist -nosecondary_index
+  #Note: The indexes on tables emp and emphist will have to be rebuilt or dropped before 
+  the tables can be accessed.
+
+  #4. This command recovers table emp in the empdata database and relocates it from 
+  location emploc to the new location newemploc:
+rollforwarddb empdata -table=emp,emphist -relocate -location=emploc -new_location=newemploc
+  #UNIX:
+rollforwarddb empdata +c +j -m/dev/rmt0
+  #VMS:
+rollforwarddb empdata +c +j -mMTA0:
+
+
+  #Command Reference Guide (p. 241)
+  #Permission required: DBA or a system administrator running rollforwarddb with the –u 
+  flag. On VMS, if using this command against a database in a group level installation, 
+  you must have the VMS CMKRNL privilege.
+  
+  #The rollforwarddb command recovers a database or table from the last checkpoint and the 
+  current journal and dump files. When executing table level recovery, you can optionally 
+  move the table to a new location.
+  #If the target checkpoint was performed online (while the database was in use), then 
+  rollforwarddb does the following:
+    1. Restores the database from the checkpoint location to the database location
+    2. Applies the log records in the dump location to the database, which returns the     
+    database to its state when the checkpoint began
+    3. Applies the journal records to the database
+  #If the target checkpoint was executed offline, then the second step is omitted.
+  #By default, rollforwarddb sequentially restores data locations one at a time. A 
+  database with more than one data location can be restored in parallel.
+
+  #The rollforwarddb command has the following format:
+rollforwarddb dbname[/server_class] [+c|-c] [#c[n]] [+j|-j] [-mdevice{, device}] [-uusername] [#m[n]] [-v] [+w|-w] [-bdd-mmm-yyyy:hh:mm:ss[.cc]] [-edd-mmm-yyyy:hh:mm:ss[.cc]] [-incremental] [-norollback] [-table=tablename{, tablename} [-nosecondary_index] [#f] [-statistics] [-ignore] [-on_error_continue] [-on_error_prompt] [-relocate -location=locationname {, locationname} -new_location=locationname{, locationname}]] [-dmf_cache_size= x] [-dmf_cache_size_4k|8k|16k|32k|64k= x] [-help]
+
+  dbname
+  #Identifies the database (one database name only) to be recovered, and if required, the 
+  server_class, as described in Standard Flags and Parameters (see page 15).
+
+  +c|-c
+  #Recovers (+c) or does not recover (-c) the database from the checkpoint file. The 
+  default is +c.
+
+  #c[n]
+  #Recovers from an older checkpoint. The checkpoint number n must be a valid checkpoint 
+  number (as shown by the infodb command). This flag can be used to recover the database 
+  when the current checkpoint is unfinished. If n is omitted, the most recent usable 
+  finished checkpoint is used for the recovery.
+  #UNIX: In bash shell, place this option in quotes; otherwise characters after the # are 
+  treated as a comment. For example:
+rollforwarddb empdata "#c1"
+  #For more information, including limitations and cautions, see Recover a Database from an Old Checkpoint in the Database Administrator Guide.
+
+  +j|-j
+  #Recovers (+j) or does not recover (-j) the database from the journal. The default is +j
+
+  -mdevice {, device}
+  #Recovers the checkpoint from the specified tape device. If a list of tape devices is 
+  supplied, parallel recovery will be used for a multi-location database.
+  #If the database was checkpointed to a tape, you can use the –m flag to restore the 
+  database from the tape.
+  VMS: Before executing rollforwarddb from a tape device, the tape must be inserted into 
+  the tape drive.
+
+  -uusername
+  #Specifies the effective user for the session, as described in Standard Flags and 
+  Parameters (see page 15).
+
+  #m[n]
+  #Recovers n locations at a time from disk, for a multi-location database.
+  UNIX: In bash shell, place this option in quotes; otherwise characters after the # are 
+  treated as a comment.
+
+  -v
+  #Recovers the database from the journal in verbose mode, which provides diagnostic 
+  information about all operations executed during the recovery process.
+
+  +w|-w
+  #Waits (+w) or does not wait (-w) for the database to be free (not in use). The default 
+  is -w.
+  #VMS: The +w|-w flag directs rollforwarddb to wait (+w) or not wait (-w) for the 
+  database   to be free before recovering the database. Since rollforwarddb requires the 
+  database to   be locked, this flag allows you to decide whether to wait for the database 
+  to be free if it is in use. If you specify +w, rollforwarddb will wait as long as 
+  necessary for the database to become free for locking and recovery. If you specify –w, 
+  an error is returned if the database is busy. The default is –w.
+  #This flag can be used only in interactive sessions and not in batch mode.
+  
+  -bdd-mmm-yyyy[:hh:mm:ss[.cc]]
+  #Recovers transactions that were completed after the specified date and time only. 
+  Fractional seconds are optional and assumed to be ".00" if not specified.
+  
+  -edd-mmm-yyyy[:hh:mm:ss[.cc]]
+  #Recovers transactions that were completed before the specified date and time only. 
+  Fractional seconds are optional and assumed to be ".00" if not specified.
+  #Note: The -e and -b flags are fully supported when used against an entire database.
+  #Caution! Using the -b or -e options with the -table flag will result in the table being 
+  logically inconsistent. Using these parameters to skip recovery of a segment of the 
+  journal file is not supported.
+
+  -incremental
+  #Indicates an incremental rollforwarddb.
+  #When -incremental +c -j is specified, the checkpoint is restored and rollforwarddb 
+  marks the database INCONSISTENT with inconsistency code INCR_RFP. While the database is 
+  inconsistent (INCR_RFP), you can still connect and perform read only operations.
+  #When -incremental -c +j is specified:
+     Rollfowarddb applies all new journal files that have been moved into the journal 
+    directory.
+     If -norollback has also been specified, any open transaction context is written at 
+    the end of the last journal file processed.
+     Before processing new journals, open transaction context is restored from the 
+    previous incremental roll forward.
+  #If -rollback is specified, after journal processing has finished, any open transactions 
+  are rolled back. The database will be marked consistent and updatable. This option 
+  should be specified when you have finished the incremental rollforwarddb.
+  #Note: Incremental rollforwarddb requires that all journals since the last checkpoint be 
+  present. For example, if you apply a batch of journal files, and then delete the 
+  previous batch of journal files, rollforwarddb -incremental -rollback may fail.
+
+  -norollback
+  #Bypasses the rollback phase of rollforward and leaves the database in the exact state 
+  described by the journal files. If used with the -e flag, then the database is left in 
+  the state described by the journal files up to the time specified. Any incomplete 
+  transactions are left incomplete. If transactions are left incomplete, the database will 
+  be in an inconsistent state after the rollforwarddb.
+  #Note: The default is -rollback, which does not need to be explicitly specified.
+
+  -table=tablename{, tablename}
+  #Specifies a list of tables to be recovered from the target checkpoint. If multiple 
+  tables are specified, no space is allowed between the tables listed. Table recovery is 
+  not allowed for views, system catalogs, or Enterprise Access tables.
+  #If recovering a base table, blob columns (long byte and long varchar columns) will be 
+  recovered, and secondary indexes will be recovered, unless –nosecondary_index is 
+  specified.
+  
+  -nosecondary_index
+  #Inhibits automatic recovery of secondary indexes.
+  #Note: All secondary indexes will be marked inconsistent. The base table cannot be 
+  accessed until the secondary indexes are rebuilt or dropped.
+  This option is invalid for database level recovery.
+
+  #f
+  #Forces journaling enablement, if rollforwarddb with journaling is attempted on a 
+  database that has journaling disabled.
+  #UNIX: In bash shell, place this option in quotes; otherwise characters after the # are 
+  treated as a comment.
+
+  -statistics
+  #Prints statistics about the rollforwarddb operation.
+
+  -ignore
+  #Ignores any errors that occur during the processing of journal records, and applies 
+  subsequent records for the table. The table will be marked inconsistent at the end of 
+  rollforwarddb. The database will also be marked inconsistent to bring to your attention 
+  the errors that occurred during rollforwarddb. Choose this action when the table cannot 
+  be rebuilt from another source and you want to try to recover as much data as possible.
+
+  -on_error_continue
+  #Continues processing journal records if an error occurs, but does not apply subsequent 
+  records for the table. The table is removed from the table list and processing continues
+  . The table or index will be marked inconsistent at the end of rollforwarddb. The 
+  database will also be marked inconsistent to bring to your attention the errors that 
+  occurred during rollforwarddb. Choose this action for secondary indexes (which can be 
+  rebuilt) or if the table can be rebuilt from another source.
+  #If this option is not specified and an error is encountered, all tables being recovered 
+  are marked inconsistent and rollforwarddb terminates.
+  #Note: This option does not force continuation of an invalid rollforwarddb command. The 
+  rollforwarddb process is terminated immediately if an invalid table—for example, a view, 
+  system catalog, Enterprise Access table, nonexistent table, or a table for which 
+  recovery is disallowed—is specified.
+  #This option is invalid for database level recovery.
+
+  -on_error_prompt
+  #Prompts “Error during recovery of table (tablename, tableowner)” if an error occurs 
+  when applying dump or journal records. The on_error_prompt option provides the ability 
+  to handle errors for various tables differently.
+  #You can respond with one of these actions:
+    CONTINUE_IGNORE_TABLE
+    #Continues journal processing, but ignores subsequent journal records for this table 
+    or index. This action is equivalent to the on_error_continue flag.
+    CONTINUE_IGNORE_ERROR
+    #Continues journal processing and applies subsequent records for this table. This 
+    action is equivalent to the –ignore flag.
+    ROLLBACK_TRANSACTIONS
+    #(Default) Stops processing the journals and rolls back open transactions. The 
+    database is left at a consistent state, but not all updates have been reapplied and 
+    the database is inconsistent with the journals.
+
+  -relocate
+  #Indicates that a table is to be relocated to a new location during recovery. When using 
+  this option, –location and –new_location must also be specified.
+  #This option is invalid for database-level recovery.
+
+  -location=locationname{, locationname}
+  #Specifies a data location or list of locations (locationname).
+  When –relocate and –new_location are also specified, the data in each area in the 
+  location list is moved to the corresponding area in the new location list. Only tables 
+  being recovered are relocated.
+  #This option is invalid for database level recovery.
+
+  -new_location=locationname{, locationname}
+  #Specifies a new data location or list of new data locations (locationname).
+  When -relocate and -location are also specified, the data in each area in the location   
+  list is moved to the corresponding area in the new location list. Only tables being 
+  recovered are relocated.
+  #When this option is specified, –relocate and -location must also be specified, and the 
+  number of locations in the location list must equal the number of locations in the new 
+  location list. (The number of location names associated with a table cannot be changed 
+  using rollforwarddb.)
+  #This option is invalid for database level recovery.
+
+  [-dmf_cache_size= x] [-dmf_cache_size_4k|8k|16k|32k|64k= x]
+  #Specifies the size of the local cache that rollforwarddb allocates, in number of 
+  buffers.
+  Default values are:
+    -dmf_cache_size=256, which indicates 256 2 KB buffers.
+    -dmf_cache_size_xk=200, where x is the buffer size indicated in the keyword. For 
+    example, -dmf_cache_size_64k=200 indicates 200 64 KB buffers.
+  If you specify 0 for the 4k, 8k, 16k, 32k, or 64k buffers, 256 buffers are allocated.
+
+  -help
+  #Displays command syntax online.
+
+
+
+
+# BU: estimate chckpt size (UNIX)
+
+  #Database Administrator Guide (p. 405)
+
+  #1) View II_DATABASE
+ingprenv
+  II_DATABASE=/u01/ing/df/database
+
+  #2) View directory size in blocks
+  #du II_DATABASE/ingres/data/default/db_name
+du /u01/ing/df/database/ingres/data/default/testdb/
+
+  #3) For archiving using "tar" - increase that block size by 5%
+
+
+
+
+# BU: copydb
+
+  #Example
+  #Where to unload (default - current dir)
+cd /u01/unload
+  #create tech files to copy ("-l" option!!!)
+copydb demodb
+  #copy user (not system!) objects from DB to current dir
+sql demodb<copy.out
+  # Create a new DB:
+createdb demodbnew 
+  #Load info from old DB
+sql demodbnew<copy.in 
+  #Optimize
+sysmod demodbnew
+  
+  #Example on UNIX #2
+  #These commands copy mydb to tape. In this example, replace the named directory (/usr
+  /mydir/backup) with your own:
+cd /usr/mydir/backup 
+copydb mydb /usr/mydir/backup 
+sql mydb <copy.out
+tar c
+rm *
+  #The following commands copy a tape to mydb. In this example, replace the named 
+  directory (/usr/mydir/backup) with your own:
+cd /usr/mydir/backup
+tar xvpf /dev/rmt0 
+sql mydb <copy.in
+sysmod mydb
+
+  #Example on Windows
+  #The following commands make a copy of olddb. In this example, replace the named 
+  directory (\mydir\backup) with your own:
+cd \mydir\backup
+copydb olddb
+sql olddb<copy.out
+  #The following example creates a new database newdb:
+createdb newdb 
+sql newdb<copy.in 
+sysmod newdb
+  
+  #The following command runs copydb with parameters supplied in a file called flagfile:
+copydb -param_file=flagfile
+    #where flagfile can contain the following entries:
+    dbname
+    -order_ccm
+    -relpath
+    -no_loc
+    -all
+  #This is equivalent to the command:
+copydb dbname -order_ccm -relpath -no_loc -all
+
+
+  #Command Reference Guide (p.53)
+  
+  #The copydb command creates command files containing the SQL statements required to copy     
+  and restore a database. The command creates the following two command files in the 
+  current directory:
+     copy.out contains SQL commands to copy all tables, views, and procedures owned by 
+    the user into files in the specified directory.
+     copy.in contains SQL commands to copy the files into tables, recreate views, 
+    procedures, and indexes, and perform modifications.
+  #To copy the database, you must execute the SQL commands in the copy.in and copy.out 
+  command files.
+  #The name of a file created by copy.out consists of the name of the table followed by an 
+  extension made up of the first three letters of the owner’s login name. If file names 
+  collide, a unique digit replaces the last character of the table name segment.
+  #Copydb can be used to change ownership of tables. For details, see the Database 
+  Administrator Guide.
+  #System catalogs cannot be copied using copydb. Use unloaddb to copy a complete database
+  , including system catalogs.
+  #Notes:
+     It is important that the database be recreated with copy.in before doing any work 
+    (for example, creating tables, forms, applications, or reports) in the new database. 
+    After recreating a database, be sure to run sysmod to optimize storage structures.
+     When copydb is run from an Ingres 9.1 or later installation against an older version 
+    of Ingres, the copy.in script generated will contain the data type INGRESDATE or 
+    ANSIDATE instead of DATE for any date columns in CREATE TABLE statements.
+     Copydb output is not encrypted. To protect sensitive data, encrypt the copydb output 
+    files as needed.
+
+  #The copydb command has the following format:
+copydb [-param_file=filename] | [dbname|vnode::dbname[/server_class] [-c] [+user=authuser] [-uusername] [-Ggroupid] [-group_tab_idx] [-parallel]] [-journal] [-P] [-source=dirname] [-dest=dirname] [-ddirname] [-with_tables] [-with_modify] [-nodependency_check] [-with_data] [-all] [-order_ccm] [-with_index] [-with_constr] [-with_views] [-with_synonyms] [-with_events] [-with_proc] [-with_reg] [-with_rules] [-with_alarms] [-with_comments] [-with_roles] [-with_sequences] [-no_seq] [-with_permits] [-with_blankline] [-with_csv] [-with_ssv] [-add_drop] [-infile=filename] [-outfile=filename] [-relpath] [-no_loc] [-no_perm] [-noint] [-no_persist] [-no_repmod] [-no_rep] [-nologging] [-no_warn] [-online] [-on_logfull=commit|abort|notify] [-nvarchar] [-include | -exclude] [-compress] {tablename|viewname}] [-help]
+
+  -param_file=filename
+  #Reads filename for all other command line flags, database names, and any other command 
+  line arguments. This file must contain only one flag per line (see the examples that 
+  follow). If this flag is specified, no other flags or arguments can appear on the 
+  command line; they must, however, appear in the specified file.
+
+  dbname
+  #Specifies the name of the database and, if required, the vnode and server_class, as 
+  described in Standard Flags and Parameters (see page 15).
+
+  -c
+  #Creates a printable data file. This is useful for transporting databases between 
+  computer systems whose internal representations of non-ASCII data differ. (When you 
+  restore a database from a file created using the –c flag, the copy command automatically 
+  converts data stored in this format back to the appropriate type.)
+  #Copydb cannot represent the following types of data using printable characters: (1) 
+  binary data stored in varchar columns, and (2) user-maintained logical keys.
+
+  +user=authuser
+  #Specifies the user name and password used for connection authentication, as described 
+  in Standard Flags and Parameters (see page 15).
+
+  -uusername
+  #Specifies the effective user for the session, as described in Standard Flags and   
+  Parameters (see page 15) and Schema Qualifier (see page 20).
+
+  -Ggroupid
+  #Specifies a group identifier, as described in Standard Flags and Parameters (see page 
+  15). You must enclose this parameter in double quotation marks (“-Ggroupid”).
+
+  -group_tab_idx
+  #Builds indexes in the command file immediately after the respective table creation. 
+  Without this flag, all indexes are created for all tables toward the end of the command 
+  file. The usermod command uses this flag to limit the loss of non-persistent indexes if 
+  it encounters a failure.
+
+  -parallel
+  #Creates indexes using the parallel index creation syntax (to build multiple indexes 
+  concurrently).
+
+  -journal
+  #Replaces the SET NOJOURNALING statement in the copy.in scripts with the SET JOURNALING 
+  statement, and disables specifying the WITH NOJOURNALING option on each CREATE TABLE 
+  statement in copy.in script. When using the –journal flag, fastload is not possible when 
+  loading the tables.
+
+  -P
+  #Prompts for password if the session requires one.
+
+  -source=dirname
+  #Specifies the directory that contains the data files and from which copy.in will be run
+  . An empty dirname specification (“”) denotes the current directory. The –source 
+  specification overrides a –d specification for the copy in file.
+  #If a source is specified without a destination (no –d or –dest), the default copy out 
+  directory is used.
+  #The source directory specification is not checked for validity or existence. This 
+  allows the scripts to be moved to another machine.
+
+  -dest=dirname
+  #Specifies the directory where the data files created by copy.out will be stored. An 
+  empty dirname specification (“.”) denotes the current directory. The –dest specification 
+  overrides a –d specification for the copy out file.
+  #If a destination is specified without a source (no –source) then the default copy in 
+  directory is used.
+  #The destination directory specification is not checked for validity or existence. This 
+  allows the scripts to be moved to another machine. The destination directory must be 
+  different from the database directory, $II_DATABASE/ingres/data/default/dbname, because 
+  the files have the same names as the table files.
+
+  -ddirname
+  #Stores the copy.in and copy.out files in the specified directory instead of the default current directory. The file name must be fully specified.
+
+  -with_tables
+  #Prints only the CREATE statements.
+
+  -with_modify
+  #Prints only the MODIFY statements.
+
+  -nodependency_check
+  #Adds the WITH NODEPENDENCY_CHECK option to any MODIFY commands generated. This option 
+  forces a table modify operation and destroys indexes needed for constraints.
+  #Important! If you use this option, you must preserve or recreate the table structure 
+  necessary to enforce the constraints.
+
+  -with_data
+  #Prints only the COPY statements.
+
+  -all
+  #Prints all the statements related to the database.
+
+  -order_ccm
+  #Determines the order in which the COPY and MODIFY statements are written for the table. 
+  The default is to modify and then copy. If –CCM is specified, the order is to copy and 
+  then modify.
+
+  -with_index
+  #Prints statements only related to index.
+
+  -with_constr
+  #Prints statements only related to constraints, such as ALTER TABLE statements.
+  
+  -with_views
+  #Prints statements only related to views.
+  
+  -with_synonyms
+  #Prints statements only related to synonyms.
+
+  -with_ events
+  #Prints statements only related to events.
+  
+  -with_proc
+  #Prints statements only related to procedures.
+
+  -with_reg
+  #Print statements only related to registration.
+
+  -with_rules
+  #Prints statements only related to rules.
+
+  -with_alarms
+  #Prints statements only related to security alarms.
+
+  -with_comments
+  #Prints statements only related to comments.
+  
+  -with_roles
+  #Prints statements only related to roles.
+
+  -with_sequences
+  #Prints statements only related to sequences.
+
+  -no_seq
+  #Does not print sequence related statements.
+
+  -with_permits
+  #Prints statements only related to permits.
+
+  -with_blankline
+  #Generates redundant blank lines after every row in each data file generated. By default
+  , redundant blank lines are not generated. This option applies only when using the –c 
+  flag to generate ASCII data files.
+
+  -with_csv
+  #Generates a comma-separated data file.
+
+  -with_ssv
+  #Generates a semicolon-separated data file.
+  
+  -add_drop
+  #Writes a DROP statement also, before writing the CREATE statements. This is useful when 
+  the scripts are run repeatedly in case of errors, and tables are already created.
+
+  -infile=filename
+  #Specifies an input file name for the copy.in file, so user can run copydb with 
+  different options and give different names for infile.
+
+  -outfile=filename
+  #Specifies an output file name for the copy.out file.
+
+  -relpath
+  #Removes the paths from the file names; the files will thus be created and copied from   
+  the current directory.
+  
+  -noint
+  #Runs copydb uninterrupted for all the tables.
+
+  -no_loc
+  #Does not write the LOCATION clause for CREATE TABLE, CREATE INDEX, or MODIFY statements
+
+  -no_perm
+  #Does not print GRANT statements.
+  
+  -no_persist
+  #Does not write CREATE INDEX statements for indexes that have been created with the WITH 
+  PERSISTENCE clause.
+  
+  -no_repmod
+  #Does not write MODIFY table statements for Ingres Replicator system tables of a 
+  replicated database.
+  
+  -no_rep
+  #Does not write Ingres Replicator objects (tables, indexes, events, procedures) of a 
+  replicated database to the copy.in file.
+  
+  -nologging
+  #Writes a SET NOLOGGING statement to the copy.in file to bypass the logging and recovery 
+  system. Use with caution.
+  
+  -no_warn
+  #Suppresses the following message when copydb processing ends: "COPYDB has created the 
+  scripts copy.out and copy.in. From an Ingres prompt, run sql databasename < copy.out to 
+  copy the data."
+  
+  -online
+  #Adds the WITH CONCURRENT UPDATES option to the MODIFY statement, if specified.
+  
+  -on_logfull=commit|abort|notify
+  #Adds a SET SESSION WITH ON_LOGFULL=value statement to the generated copy.in file.
+  
+  -nvarchar
+  #Exports strings in UTF-8 encoding so that the data files are portable. On CREATE TABLE 
+  statements, column data types char, varchar, and long varchar are changed to nchar, 
+  nvarchar, and long nvarchar, respectively. The -nvarchar flag changes the default copy 
+  specification for character types from varchar to nvarchar. You do not need to specify 
+  the -c flag.
+  #Note: The generated copy.in script cannot be used to reload data into a non-Unicode 
+  database.
+  
+  -include= | -exclude=
+  #Includes or excludes the specified object types in the generated copy scripts. The   
+  flags are mutually exclusive of each other and of other flags that specify objects that 
+  should [not] be generated.
+  #For example, generate a copy.in that contains only the CREATE and MODIFY statements for 
+  each table in the mydb database:
+copydb -include=table,modify mydb
+
+  -compress
+  #Includes WITH COMPRESSION clause in the generated copy scripts.
+
+  tablename|viewname
+  #Specifies the tables to be copied. If omitted, all tables are copied. This could also 
+  be a list of views; in that case only the given views are copied.
+  #The table name can be qualified with a valid schema name in the format schema.tablename
+  , as described in Schema Qualifier (see page 20).
+  #Note: No more than 100 objects can be specified. This limit can be raised by modifying 
+  the utexe.def file. For more information, see the Database Administrator Guide.
+
+  -help
+  #Displays command syntax online.
+
+
+
+
+# BU: unloaddb
+
+  #The unloaddb command creates command files that the DBA uses to unload the data from a database and reload the data into a new, empty database.
+  #Use unloaddb when a database must be totally rebuilt, or for checkpointing the database. The unloaddb command unloads all objects in the database, including tables, views, integrity constraints, permissions, forms, graphs, and report definitions.
+
+  #It doesn't delete the original db. It's like a dump in Oracle
+
+  #Examples
+  
+  #Unload and Reload a Database
+    #UNIX
+  #create tech files into "techfiles" (default - current dir), unload DB into "unloaded", 
+  reload DB from that "unload" (can be inconsistence - use "-l"!!!)
+unloaddb demodb -uxburser -d"/u01/unload/techfiles" -dest="/u01/unload/unloaded" -source="/u01/unload/unloaded"
+  #fire tech file
+/u01/unload/techfiles/unload.ing 
+  #destroy old DB
+destroydb demodb
+  #create new DB
+createdb demodb 
+  #fire another techfile
+/u01/unload/techfiles/reload.ing
+  #check(?) new DB
+sysmod demodb
+
+    #Windows
+cd\mydir\backup 
+unloaddb empdata 
+unload 
+destroydb empdata 
+createdb empdata
+reload 
+sysmod empdata
+UNIX:
+cd /mydir/backup unloaddb empdata unload.ing destroydb empdata createdb empdata reload.ing sysmod empdata
+VMS:
+set default [mydir.backup] unloaddb empdata @unload.ing destroydb empdata createdb empdata @reload.ing sysmod empdata
+
+
+  #Unload a Database, Specifying Source and Destination Directories
+    #This command unloads the empdata database, specifying separate source and destination 
+    directories:
+unloaddb empdata -source="misc/loaddir/" -dest="misc/dumpdir"
+    #Copy statements in the reload script would have the form:
+copy emps () from 'misc/loaddir/emps.bob'
+    #Copy statements in the unload script would have the form:
+copy emps () into 'misc/dumpdir/emps.bob'
+
+
+  #Unload a Database from the $HOME Directory
+    #This command unloads the empdata database from the $HOME directory, specifying the 
+    current directory as the source and destination directories:
+unloaddb empdata -source="" -dest=""
+    #Copy statements in the reload script would have the form:
+copy emps () from 'emps.bob'
+    #Copy statements in the unload script would have the form:
+copy emps () into 'emps.bob'
+
+
+  #Command Reference Guide (p.266)
+  #The unloaddb command creates command files that the DBA uses to unload the data from a 
+  database and reload the data into a new, empty database.
+  #Use unloaddb when a database must be totally rebuilt, or for checkpointing the database
+  . The unloaddb command unloads all objects in the database, including tables, views, 
+  integrity constraints, permissions, forms, graphs, and report definitions.
+
+  #Two command files are created:
+     Unload file — contains commands to read sequentially through the database, copying 
+    every user table into its own file in the named directory.
+     Reload file — contains commands to load a new, empty database with the information   
+    contained in the files created by the unload file.
+
+  #On Windows the file names are unload.bat and reload.bat. On UNIX, the file names are 
+  unload.ing and reload.ing.
+  #The DBA must execute these files to accomplish the unloading and reloading of the 
+  database. It is important that the database be recreated with the reload file before 
+  doing any work (for example, creating tables, forms, and reports) in the new database.
+  #The unloaddb command uses a version of the copydb command to generate the copy commands 
+  in the unload and reload files. Consequently, all limitations of the copydb command 
+  apply to the unloaddb command.
+  #Notes:
+     If overflow occurs, you may need to edit the unload and reload files to specify   
+    another flag, for example, N instead of F in the default floating point specification.
+     To optimize performance, run the sysmod and optimizedb commands after recreating the 
+    database.
+     When unloaddb is run from an Ingres 9.1 or later installation against an older 
+    version of Ingres, the command file generated will contain the data type INGRESDATE or 
+    ANSIDATE instead of DATE for any date columns in CREATE TABLE statements.
+
+  #The unloaddb command has the following format:
+unloaddb dbname|vnode::dbname[/server_class] [+user=authuser] [-uusername] [-c] [-ddirname] [-source=dirname] [-dest=dirname] [-P] [-Ggroupid] [-group_tab_idx] [-nologging] [-parallel] [-journal] [-no_seq] [-no_systabs] [-on_logfull=commit|abort|notify] [-with_blankline] [-with_csv] [-with_ssv] [-no_rep] [-nvarchar] [-add_drop] [-relpath] [-compress]
+
+  dbname
+  #Specifies the name of the database, and if required, the vnode and server_class, as 
+  described in Standard Flags and Parameters (see page 15).
+
+  +user=authuser
+  #Specifies the user name and password used for connection authentication, as described 
+  in Standard Flags and Parameters (see page 15).
+
+  -uusername
+  #Specifies the effective user for the session, as described in Standard Flags and 
+  Parameters (see page 15).
+
+  -c
+  #Creates printable data files, which is useful for transporting databases between 
+  computer systems whose internal representations of non-ASCII data differ.
+  #Unloaddb cannot create printable files if (1) binary data is stored in varchar columns,   
+  or (2) tables contain user-maintained logical keys.
+  #For nchar, nvarchar, or long nvarchar columns or when the installation character set is 
+  UTF8, the data files generated are in UTF-8 encoding.
+  #The UTF-8 encoded data files containing data from char, varchar, or long varchar 
+  columns can be reloaded only into installations installed with the UTF8 character set.
+
+  -ddirname
+  #Stores the unload and reload files in the location specified by dirname instead of the   
+  default current directory. The specification can be either a full or relative directory 
+  specification.
+  #The dirname must not be the actual database directory, because the files created by 
+  unloaddb may have the same names as the tables in the database. The actual database 
+  directory is: $II_DATABASE/ingres/data/default/dbname. (On VMS, the directory is: 
+  II_DATABASE:[INGRES.DATA.DBNAME].)
+unloaddb demodb -d"/u01/unload/techfiles"
+
+  -source=dirname
+  #Specifies the source directory from which the database will be reloaded. An empty   
+  dirname specification ("") denotes the current directory. The -source specification 
+  overrides a -d specification for the reload file.
+  #If a source is specified without a destination (no -d or -dest), then the default 
+  unload directory is used.
+  #The source directory specification is not checked for validity or existence. This 
+  allows the scripts to be moved to another machine for reloading.
+
+  -dest=dirname
+  #Specifies the destination directory into which the database will be unloaded. An empty   
+  dirname specification (“.”) denotes the current directory. The -dest specification 
+  overrides a -d specification for the unload file.
+  #If a destination is specified without a source (no -source) then the default reload 
+  directory is used.
+  #The destination directory specification is not checked for validity or existence. This   
+  allows the scripts to be moved to another machine for unloading.
+
+  -P
+  #Prompts for password if the session requires a password.
+
+  -Ggroupid
+  #Specifies a group identifier, as described in Standard Flags and Parameters (see page 
+  15).
+  #On VMS, enclose this parameter in double quotation marks ("-Ggroupid").
+
+  -group_tab_idx
+  #Builds indexes in the command file immediately after the respective table creation.   
+  Without this flag, all indexes are created for all tables toward the end of the command 
+  file. The usermod command uses this flag to limit the loss of non-persistent indexes if 
+  it encounters a failure.
+
+  -nologging
+  #Writes a SET NOLOGGING statement to the unload file to bypass the logging and recovery 
+  system. Use with caution. For more information see SET NOLOGGING in the SQL Reference 
+  Guide.
+
+  -parallel
+  #Creates indexes using the parallel index creation syntax (to build multiple indexes   
+  concurrently).
+
+  -journal
+  #Replaces the SET NOJOURNALING statement in the unload scripts with the SET JOURNALING   
+  statement, and disables specifying the WITH NOJOURNALING option on each CREATE TABLE 
+  statement in the unload script.
+
+  -no_seq
+  #Does not print lines related to sequences.
+
+  -no_systabs
+  #Unloads/reloads all user objects, but ignores all the system objects. This is useful if   
+  there are many different schemas in one database.
+
+  -on_logfull=commit|abort|notify
+  #Adds a SET SESSION WITH ON_LOGFULL=value statement to the generated reload file.
+
+  -with_blankline
+  #Generates redundant blank lines after every row in each data file generated. By default
+  , redundant blank lines are not generated. This option applies only when using the –c 
+  flag to generate ASCII data files.
+  
+  -with_csv
+  #Generates a comma-separated data file.
+
+  -with_ssv
+  #Generates a semicolon-separated data file.
+
+  -no_rep
+  #Does not write Ingres Replicator objects (tables, indexes, events, procedures) of a 
+  replicated database to the unload file.
+
+  -nvarchar
+  #Exports strings in UTF-8 encoding so that the data files are portable. On CREATE TABLE 
+  statements, column data types char, varchar, and long varchar are changed to nchar, 
+  nvarchar, and long nvarchar, respectively. The -nvarchar flag changes the default copy 
+  specification for character types from varchar to nvarchar. You do not need to specify 
+  the -c flag.
+  #Note: The generated copy.in script cannot be used to reload data into a non-Unicode   
+  database.
+
+  -add_drop
+  #Writes a DROP statement also, before writing the CREATE statements. This is useful when 
+  the scripts are run repeatedly in case of errors, and tables are already created.
+
+  -relpath
+  #Removes the paths from the file names; the files will thus be created and copied from 
+  the current directory.
+
+  -compress
+  #Includes WITH COMPRESSION clause in the generated files.
+
+
+
+
+# CONNECT: standart flags/parameters
+
+  #Command Reference Guide (p.15)
+  #The following parameters and flags are common to many commands. Each command descriptio
+  n in this guide indicates whether these parameters or flags are valid for that command.
+  
+  #The following syntax is typical for many commands:
+command dbname|vnode::dbname[/server_class] [-fproduct] [+user[=authuser]] [-uusername] [-Ggroupid] [-Rroleid] [other flags] [other parameters]
+
+  dbname
+  #Identifies the name of a database. This parameter must precede all other non-flag   
+  parameters (with the exception of vnode::dbname).
+
+  vnode::
+  #Identifies the remote node on which the database is located. It must be followed by two 
+  colons (::) and the dbname parameter, with no intervening space.
+  #The remote node can be specified as either of the following:
+    vnode_name
+    #Is the virtual node name, as defined to Ingres Net, that points to the connection 
+    data and authorization data necessary to access a particular remote instance.
+    @host+
+    #Is a “dynamic vnode” connection string that includes the connection data, user 
+    authorization, and attributes that are associated with a remote node. The format of 
+    @host+ is described in Dynamic Vnode Specification (see page 18).
+
+  server_class
+  #Specifies the name of one of the Ingres servers or Enterprise Access products (for 
+  example, DB2 UDB). If you are accessing a distributed database or a non-Ingres database 
+  through an Enterprise Access product, you must specify the server_class. For valid 
+  values for server_class, see the Connectivity Guide or your Enterprise Access product 
+  documentation.
+
+  -fproduct
+  #Specifies the name of a product parameter. In selected commands, the catalog modules 
+  for one or more products may be specified. The user interface catalogs are grouped into 
+  modules. Each Ingres tool requires a set of modules to operate. If you omit the product, 
+  the command reads the installation’s authorization string and specifies all products 
+  that the authorization string permits.
+  #The product parameter must be one of the following:
+    ingres
+    #Processes catalogs for the Ingres tools (Applications-By-Forms, Query-By-Forms, 
+    Report-By-Forms, and Visual Forms Editor).
+    ingres/dbd
+    #Processes catalogs for DBD.
+    vision
+    #Processes catalogs for Vision.
+    windows_4gl
+    #Processes catalogs for OpenROAD.
+    nofeclients
+    #Directs the command not to process catalogs for any user interface products. You 
+    cannot use the nofeclients name in conjunction with the name of any valid user 
+    interface product; nofeclients is valid only in specified commands.
+
+  +user[=authuser]]
+  #Specifies the user name (authuser) and password used for connection authentication,   
+  whether through OS authentication, DBMS authentication, or another mechanism. This 
+  syntax is useful when using DBMS authentication because it allows password entry or 
+  prompting with simplified syntax.
+  #One of the following can be specified:
+    +user
+    #Prompts for the password of the user.
+    +user=username
+    #Connects as the specified user and prompts for password.
+    +user=username,password
+    #Connects as the specified user and password. Password is exposed on the command line.
+    @[username, password]
+    #Connects as the specified user and password. Password is exposed on the command line.
+    #Note: The @[username,password] must be specified as part of the full database name     
+    including vnode. No arguments can appear between it and the node name. For example:
+      sql -F8f20.10 @[me,mypassword]nodename::mydb
+
+  -uusername
+  #Specifies the effective user name for the session. Valid only for a privileged user, 
+  DBA, or sessions that have the db_admin database privilege. (Some commands, including 
+  ckpdb, rollforwarddb, verifydb, createdb, and destroydb, restrict the use of the -u flag 
+  to privileged users.)
+  #It is possible to include both +user and -uusername on the command line. The initial 
+  connection will be as the +user user (and password), and then assuming that that user is 
+  properly privileged, the -u user will be superimposed as the effective user for the 
+  session.
+  #Note: The -u flag does not assume the group of the effective user. Use the -G flag to 
+  distinguish between the real and effective user.
+
+  -Ggroupid
+  #Specifies the group identifier for the session. After the system administrator defines 
+  a group identifier, a DBA can grant database permissions to the group. When you issue a 
+  command, specifying group ID (using the -G flag), the group’s permissions are applied to   
+  the session.
+  #To specify a group, you must be a member of the specified group identifier’s user list, 
+  a system administrator, the DBA of the specified database, or a user that has the 
+  db_admin privilege.
+  #If you omit this flag and there is a default group identifier specified for you, the 
+  default group identifier is assigned to the session. (Default group identifiers are 
+  assigned using accessdb.)
+  #VMS: You must enclose this parameter in double quotation marks ("-Ggroupid").
+
+  -Rroleid
+  #Specifies the role identifier for an application image. After the system administrator 
+  defines a role identifier, a DBA can grant database permissions to the role ID. When you 
+  invoke an application and specify role ID (using the -R flag), the role permissions are 
+  applied to your session.
+  #The roleid must be an existing role identifier. If the role identifier requires a   
+  password, you are prompted for the password. If you specify the -R flag, but omit both 
+  the role identifier and password, you are prompted for both. If no password is defined 
+  for the specified roleid, press the Enter key when prompted for the password.
+  #Neither roleid nor password is validated if you are a system administrator, DBA for the 
+  specified database, or a user that has the db_admin privilege.
+  #VMS: You must enclose this parameter in double quotation marks ("-Rroleid").
+
+
+  #Dynamic Vnode Specification—Connect to Remote Node
+  
+  #Examples
+  #This command runs the terminal monitor (sql) and connects to node hosta using protocol 
+  tcp_ip to remote Ingres symbolic port II. The login and password are Johnny and 
+  secretpwd. The remote database name is customerdb:
+sql @hosta,tcp_ip,II;[Johnny,secretpwd]::customerdb
+  #This command establishes a direct connection by using the connection_type attribute:
+sql @hosta,tcp_ip,II;connection_type=direct[Johnny,secretpwd]::customerdb
+  
+  #When connecting to a remote node (using the vnode::dbname syntax), you can specify a   
+  dynamic vnode instead of a vnode name. The dynamic vnode specification includes the 
+  connection data, user authorization, and attributes that are associated with a remote 
+  node.
+  #Note: A dynamic vnode can be used wherever a vnode is allowed, unless otherwise stated.
+  #A dynamic vnode specification has the following format:
+@host,protocol,port[;attribute=value{;attribute=value}][[user,password]]
+
+  @host
+  #Identifies the network name or address of the node on which the remote database is   
+  located. The @ character is required because it identifies this specification as a 
+  dynamic vnode rather than a vnode name.
+
+  protocol
+  #Identifies the network protocol to be used by the local node to connect to the remote 
+  node. Protocols and their associated keywords are listed in the Connectivity Guide.
+
+  port
+  #Identifies the listen address of the Ingres instance on the remote node.
+
+  attribute=value
+  #(Optional) Is one or more additional connection, encryption, and authentication 
+  attributes for the connection. Attributes and their possible values are described in the 
+  Connectivity Guide.
+
+  [user,password]
+  #Identifies the user (login) name and password for the user on the remote system.
+  #Note: The user and password are optional when creating a dynamic vnode, but must be 
+  enclosed in brackets if used. They are required if you want to authenticate using the 
+  default Ingres security mechanism.
+
+
+  #Uppercase Flags
+  
+  #Flags that must be entered in uppercase may need special input syntax when the host   
+  operating system is case-insensitive.
+  #Windows: The Windows operating system passes uppercase flags with no special formatting 
+  needed. For example, to invoke Interactive Terminal Monitor with a group of sales, you 
+  could enter:
+isql dbname -Gsales
+  #UNIX: UNIX is case-sensitive and passes uppercase flags with no special formatting 
+  needed. For example, to invoke Ingres Menu with a group of sales, you could enter:
+ingmenu dbname -Gsales
+  
+
+  #Schema Qualifier—Specify Ownership
+  
+  #A schema is a collection of database objects, such as tables. Each table, view, and   
+  synonym belongs to a schema that is determined when the object is created. The schema 
+  name corresponds to the user who owns the object. The schema name allows you to 
+  distinguish between objects with identical names but different owners.
+  #You can specify a schema name for a table, view, or synonym on the command line to   
+  specify ownership. You use the following syntax:
+schema.objectname
+  #The period (.) must immediately follow the schema name and precede the object name, 
+  with no intervening spaces. Both the schema name and the object name can be delimited 
+  identifiers.
+  #For example, to specify the table named “empinfo” having a schema name of dave, you 
+  would specify the table name as:
+dave.empinfo
+  #You do not use a schema name when referencing a table, view, or synonym; for example, 
+  you specify the table name as:
+empinfo
+  #The search looks first for an object with a schema corresponding to the current user; 
+  then it looks for an object owned by the DBA to which you have access. Lastly, if the 
+  object name begins with ii, the search looks for a system catalog with that name.
+
+
+  #Delimited Identifiers on the Command Line
+  
+    #Examples
+    #The following examples use the table names shown here:
+        Table Stored in Database          Delimited Identifier
+        ------------------------------------------------------
+        Jane’s table                      "Jane’s table"
+        "Expert" Table                    """Expert"" Table"
+    #Windows: Surround delimited identifiers and their delimiting quotes with double   
+    quotes on the command line, and dereference the delimited identifier quotes, preceding 
+    them with a backslash (\):
+report my_database "\"Jane's table\""
+report my_database "\"\"\"Expert\"table\""
+    #UNIX:
+    #Bourne shell: Surround delimited identifiers and their delimiting quotes with double     
+    quotes on the command line, and dereference the delimited identifier quotes, preceding 
+    them with a backslash (\):
+report my_database "\"Jane's table\""
+report my_database "\"\"\"Expert\"\" table\""
+    #C shell: Delimit all delimited identifier quotes and all other special shell 
+    characters, such as single quotes ('), spaces ( ), and colons (:), preceding them with 
+    a backslash (\):
+report my_database \"Jane\'s\ table\"
+report my_database \"\"\"Expert\"\" table\"
+    #In some cases, strings contained inside delimited identifiers that contain special   
+    characters can be surrounded by double quotes instead:
+report my_database \""Jane's table"\"
+
+    #Delimited Identifiers Used on Authorization Parameters
+    #You can use delimited identifiers to specify a username for the -u flag, a groupid     
+    parameter for the -G flag, or a roleid for the -R flag on the command line. A general 
+    example is:
+sreport my_database myfile -u”user 5” -G”group 2”
+    #Here are specific examples:
+    #Windows:
+sreport my_database myfile -u’”user 5”’ -G’”group 2”’
+    #Windows NT:
+sreport my_database myfile -u’”user5’””-G’”group 2’”
+    #UNIX:
+sreport my_database myfile -u’”user 5”’ -G’”group 2”’
+
+    #Delimited Identifiers and Case Sensitivity
+    #By default, identifiers are forced to lowercase, and are therefore case-insensitive.     
+    The casing rules can be specified at installation time for delimited identifiers. The 
+    following settings are allowed:
+       Ingres setting: lowercase (case-insensitive; forces all letters to lowercase).
+       ISO Entry SQL-92 standard: mixed case (case-sensitive; preserves case for   
+      delimited identifiers); regular identifiers are uppercase (case-insensitive; forces 
+      all letters to uppercase).
+    #If complying with ISO Entry SQL-92 standards, the system administrator should set 
+    delimited identifiers to mixed case.
+
+  #Delimited identifiers are database object names that are identical to reserved words, 
+  words that contain spaces, and non-alphanumeric characters that are disallowed in a 
+  regular identifier. If the installation allows mixed case names, you can also use 
+  delimited identifiers to distinguish among identical names with different case (for 
+  example, SALES and Sales).
+  #On the command line, you use delimited identifiers if needed for names of tables, views
+  , synonyms, schema, and authorization names (users, groups, and roles).
+  #To create a delimited identifier, you must enclose the name in double quotation marks 
+  ("), dereference any embedded quotes, and use the appropriate number and type of 
+  delimiting quotes to pass it through your operating system. Use delimited identifiers on 
+  the operating system command line to specify database object names:
+report my_database "Jane's table"
+  #You must observe any operating system requirements for specifying quoted parameters, 
+  parameters containing embedded quotes, and parameters containing other characters that 
+  could be interpreted differently by the operating system. Depending on your operating 
+  system, you add delimiting and dereferencing quotes to a delimited identifier on the 
+  command line in order to pass it through the operating system with its own delimiting 
+  and embedded quotes (if any).
+
+
+
+
+
+
+# CONNECT (CONFIG): installation pwd
+  
+  #If you want to use an installation password, you have to configure Net on the server, 
+  #too. In netutil, create a virtual node with the following data:
+Virtual Node Name: must be the machine's name.
+Login/Password Data
+Type: Global.
+Login: *.
+Password: enter the installation password.
+Connection Data: you do not have to enter any data here.
+
+
+
+
+# CONNECT (HOW): static vnode
+
+  #Example: 
+  
+  #Auth via user "ingres", connect as user "mydba"
+sql +user=ingres -u"mydba" bs::demodb
+
+  #Supress all output??
+sql -s demod
+
+  #Start the terminal monitor (sql) and connect using vnode "production" to the mydb 
+  database: 
+sql production::mydb 
+  #Connect as the logged in OS user. Prompt for the password: 
+sql +user production::mydb 
+  #Connect as user fred, and prompt for the password. Fred need not be an OS user: 
+sql +user=fred production::mydb 
+  #Connect as user fred and enter the password on the command line. Fred need not be an OS 
+  user: 
+sql +user=fred,secret production::mydb 
+  #Connect as user fred and enter the password on the command line. Fred need not be an OS   
+  user. 
+sql '@[fred,secret]production::mydb'
+
+
+  #Connectivty Guide (p. 91)
+  #The syntax for accessing a remote database through an OS-level command is: 
+command [auth_user] vnode::dbname[/server_class] 
+
+  #where: 
+  
+  command 
+  #Is any command used to invoke an Ingres tool, such as cbf, vcbf, sql, qbf or rbf. 
+  
+  auth_user 
+  #Specifies the user name and password used for connection authentication, whether 
+  through OS authentication, DBMS authentication, or another mechanism. This syntax is 
+  useful when using DBMS authentication because it allows password entry or prompting with 
+  simplified syntax. 
+  #The auth_user can be one of the following: 
+   
+    +user 
+    #Prompts for the password of the user. 
+    
+    +user=username 
+    #Connects as the specified user and prompts for password. 
+    
+    +user=username,password 
+    #Connects as the specified user and password. Password is exposed on the command line. 
+    
+    @[username, password] 
+    #Connects as the specified user and password. Password is exposed on the command line. 
+    #Note: The @[username,password] must be specified as part of the full database name 
+    including vnode. No arguments can appear between it and the node name. For example: 
+      sql -F8f20.10 @[me,mypassword]nodename::mydb 
+  
+  vnode:: 
+  #Is the remote node on which the database is located. The two colons are required. 
+  #The remote node can be specified as either of the following: 
+  
+  vnode_name 
+  #Is the virtual node name that points to the connection data and authorization data 
+  necessary to access a particular remote instance.
+  @host+ 
+  #Is a “dynamic vnode” connection string that includes the connection data, user 
+  authorization, and attributes that are associated with a remote node. For the format of 
+  @host+, see Dynamic Vnode Specification. 
+  
+  dbname 
+  #Is the name of the database. 
+  
+  server_class 
+  #Is the type of server being accessed at the remote site. For a list of server classes, 
+  see Server Classes (see page 93). 
+  
+
+
+
+# CONNECT (HOW): dynamic vnode
+
+  #Connectivty Guide (p. 92)
+  #You can specify a dynamic vnode instead of a vnode name. The dynamic vnode specificatio
+  n includes the connection data, user authorization, and attributes that are associated 
+  with a remote node.
+
+  #A dynamic vnode specification has the following format:
+@host,protocol,port[;attribute=value{;attribute=value}][[user,password]]
+
+  #@host
+  #Identifies the network name or address of the node on which the remote database is 
+  located. The @ character is required because it identifies this specification as a 
+  dynamic vnode rather than a vnode name.
+
+  #protocol
+  #Identifies the network protocol to be used by the local node to connect to the remote 
+  node. For a list of protocols and their associated keywords, see Network Protocol 
+  Keywords (see page 54).
+
+  #port
+  #Identifies the listen address of the instance on the remote node.
+
+  #attribute=value
+  #(Optional) Is one or more additional connection, encryption, and authentication 
+  attributes for the connection. Vnode attributes are described in Configure Vnode 
+  Attributes (see page 59).
+
+  #[user,password]
+  #(Optional) Identifies the user name and password on the remote system.
+  #Note: The user name and password must be enclosed in brackets.
+  #Rather than specifying [user, password] in the dynamic vnode specification, you can use 
+  the +user username syntax before the dynamic vnode specification. The +user flag prompts 
+  for the password, which protects the password from exposure. For example:
+    sql +user=johnny @machine01,tcp_ip,II::inventory
+  If the +user flag is used, you cannot also specify the [user, password] option as part 
+  of the dynamic vnode.
+
+
+
+
+# CONNECT (HOW): examples
+
+  #The syntax for accessing a remote database through an OS-level command is: 
+command [auth_user] vnode::dbname[/server_class]
+
+  #At the local server (tld12) to the local db (iidbdb)
+sql iidbdb
+    OR
+sql tld12::iidbdb
+
+  #To make requests from command line (static vnode)
+sql sol::iidbdb
+
+  #To make requests from command line (dynamic vnode)
+sql +user=ingres @172.22.109.95,tcp_ip,BS::demodb
+
+  #To make requests from form-based app
+isql sol::demodb
+
+  #Connect statement in an application
+exec sql connect 'lady::advertisers';
+
+  #Connect statement in an app, when the target database is accessed through Ingres Star
+exec sql connect 'lady::advertisers/star';
+
+
+
+
+# COMMANDS: can/not be used over net
+
+  #Connectivty Guide (p. 97)
+  #You can run any of the following Ingres commands against a remote database:
+    abf
+    imageapp
+    report
+    accessdb
+    ingmenu
+    sql
+    compform
+    isql
+    sreport
+    copyapp
+    netutil
+    unloaddb
+    copydb
+    printform
+    upgradedb
+    copyform
+    qfb
+    upgradefe
+    copyrep
+    query
+    vifred
+    dclgen
+    rbf
+    vision
+
+  #You cannot run the following Ingres commands against a remote database:
+    createdb
+    destroydb
+    iimonitor
+    iinamu
+    lockstat
+    logstat
+    statdump
+    sysmod
+    usermod
+    verifydb
+
+
+
+
+# DB: create
+
+  #Create new db for user mydba (user should be existing - as minimum at db level, it preferrable at OS level too)
+  
+createdb testdb -umydba
+
+    
+    # When you create a database the following occurs:
+    􀂄 The system catalogs in the master database (iidbdb) are updated.
+    􀂄 A new subdirectory is created, with the name of the database, under the database location for the database. Later, similar subdirectories are created under the work, journal, dump, and checkpoint locations for the database, as needed.
+    􀂄 The configuration file (aaaaaaaa.cnf) and the core system catalogs (aaaaaaax.t00, x=b through e) are copied to the new database directory.
+    􀂄 The DBMS system catalogs for the new database are created and modified.
+    􀂄 The standard catalog interface is created.
+    􀂄 The user interface system catalogs (restricted by any -f flag options) are created.
+    􀂄 If creating a distributed database, Ingres Star system catalogs for the database are initialized and modified.
+    􀂄 Select permission for the system catalogs is granted to public.
+
+
+
+
+# DB: drop
+
+    destroydb dbname [-p] [-l] [-uusername]
+      dbname
+      Specifies the name of the database.
+      -p
+      Prompts you to be sure that you want to destroy the database.
+      VMS: If you want to be prompted for confirmation automatically when you execute the destroydb command, use the following command, which eliminates the need to use the –p flag to obtain a confirmation prompt:
+      destroydb:=="ii_system:[ingres.bin] destroydb.exe -p"
+      -l
+      Confirms if the database is in use, and if in use, returns with an error message.
+      -uusername
+      Specifies the effective user for the session, as described in Standard Flags and Parameters (see page 13).
+
+
+  #Destroy db testdb
+  
+destroydb testdb
+
+
+  #Destroy db testdb as user mydba
+
+destroydb testdb -umydba
+
+
+    #When you drop a database, the following occurs:
+    􀂄 The database, checkpoint, journal, dump, and work directories for the database are deleted.
+    􀂄 All traces of the database are removed from the master database (iidbdb).
+    􀂄 The Application-By-Forms object file directories for any applications associated with the database (but not the source code directories) are deleted.
+
+
+
+
+# DB: view info
+
+  #Via query (from iidbdb)
+set TERM_INGRES=puttyutf8
+sql iidbdb
+select database_name, database_owner, compat_level, compat_level_minor, database_service, security_label, access, database_id  from iidatabase_info
+order by database_id
+\g
+
+┌────────────────────────────────┬────────────────────────────────┬─────────┬─────────────┬─────────────┬────────┬─────────────┬─────────────┐
+│database_name                   │database_owner                  │compat_le│compat_level_│database_serv│security│access       │database_id  │
+├────────────────────────────────┼────────────────────────────────┼─────────┼─────────────┼─────────────┼────────┼─────────────┼─────────────┤
+│iidbdb                          │$ingres                         │10.2     │            0│  -2145255424│        │           17│            1│
+│imadb                           │$ingres                         │10.2     │            0│  -2145255424│        │           17│   1441134004│
+│demodb                          │ingres                          │10.2     │            0│  -2145255424│        │           17│   1441134065│
+│testdb                          │mydba                           │10.2     │            0│  -2145255424│        │           17│   1441134986│
+│bsdb                            │ingres                          │10.2     │            0│  -2145386495│        │           17│   1441370835│
+│iibsdb                          │ingres                          │10.2     │            0│  -2145255422│        │           17│   1441370836│
+└────────────────────────────────┴────────────────────────────────┴─────────┴─────────────┴─────────────┴────────┴─────────────┴─────────────┘
+
+  
+  #Via utility
+infodb demodb
+  ==================Tue Sep  8 02:33:07 2015 Database Information=================
+  
+      Database : (demodb,ingres)  ID : 0x55E5F5F1  Default collation :
+      Unicode enabled : Yes
+      Always logged : No
+      Default unicode collation : udefault         Unicode normalization : NFC
+      Extents  : 5    Last Table Id : 353
+      Config File Version Id : 0x00070001   Database Version Id : 10
+      Mode     : DDL ALLOWED, ONLINE CHECKPOINT ENABLED
+      Status   : VALID,JOURNAL,CKP,CFG_BACKUP
+  
+                 The Database has been Checkpointed.
+                 The Database is Journaled.
+  
+                 MVCC is enabled in this database.
+  
+                 Journals are valid from checkpoint sequence : 1
+  
+  ----Journal information---------------------------------------------------------
+      Checkpoint sequence :          1    Journal sequence :                 1
+      Current journal block :        4    Journal block size :           16384
+      Initial journal size :         4    Target journal size :            512
+      Last Log Address Journaled : <1441133858:10037:112>
+  ----Dump information------------------------------------------------------------
+      Checkpoint sequence :          0    Dump sequence :                    0
+      Current dump block :           0    Dump block size :              16384
+      Initial dump size :            4    Target dump size :               512
+      Last Log Address Dumped : <0:0:0>
+  ----Checkpoint History for Journal----------------------------------------------
+      Date                      Ckp_sequence  First_jnl   Last_jnl  valid  mode
+      ----------------------------------------------------------------------------
+      Wed Sep  2 04:02:41 2015              1          1         1      1  OFFLINE
+  ----Checkpoint History for Dump-------------------------------------------------
+      Date                      Ckp_sequence  First_dmp   Last_dmp  valid  mode
+      ----------------------------------------------------------------------------
+      None.
+  ----Cluster Journal History-----------------------------------------------------
+      Node ID   Current Journal   Current Block   Last Log Address
+      ------------------------------------------------------------
+      None.
+  ----Cluster Dump History-----------------------------------------------------
+      Node ID   Current Dump      Current Block   Last Log Address
+      ------------------------------------------------------------
+      None.
+  ----Extent directory------------------------------------------------------------
+      Location                          Flags             Physical_path
+      ------------------------------------------------------------------
+      ii_database                       ROOT,DATA         /u01/ing/df/database/ingres/data/default/demodb
+      ii_journal                        JOURNAL           /u01/ing/df/journal/ingres/jnl/default/demodb
+      ii_checkpoint                     CHECKPOINT        /u01/ing/df/chechpoint/ingres/ckp/default/demodb
+      ii_dump                           DUMP              /u01/ing/df/dump/ingres/dmp/default/demodb
+      ii_work                           WORK              /u01/ing/df/work/ingres/work/default/demodb
+  ================================================================================
+
+
+
+
+# DB: view owner
+
+sql iidbdb
+select name, own from iidatabase order by name
+\g\q
+
+  lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk
+  xname                            xown                             x
+  tqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqu
+  xarizona                         xesm                             x
+  xatt280_lw                       xlead                            x
+  ...
+
+
+
+
+# DB: make it private
+
+grant noaccess on database testdb to public
+\g
+
+
+
+
+# DB: view is it public or private
+
+export DB_OWNER=leis
+catalogdb -u$DB_OWNER   	-> Databases -> Access
+
+		   Database: leisadmin
+			  Owner: leis
+
+	 Default Access: public
+
+
+
+
+# DBMSINFO: all
+
+  #http://docs.huihoo.com/ingres/ingres2006r2-guides/Ingres%20Star%20User%20Guide/2003.htm
+select dbmsinfo ('username')
+
+    Request
+  autocommit_state
+  _bintim
+  _bio_cnt
+  _cpu_ms
+  database
+  dba
+  dbms_bio
+  dbms_cpu
+  dbms_dio
+  _dio_cnt
+  _et_sec
+  language
+  _pfault_cnt
+  query_language
+  server_class
+  terminal
+  transaction_state
+  username
+  _version
+
+
+
+
+# ENVIROMENT: view current
+
+ingprenv
+
+  ING_ABFDIR=/u01/installed/ingres/abf
+  II_LP64_ENABLED=TRUE
+  II_INSTALLATION=II
+  II_DATABASE=/u01/installed/myingres/database
+  II_CHECKPOIN=/u01/installed/myingres/journal
+  II_DUMP=/u01/installed/myingres/dump
+  II_WORK=/u01/installed/myingres/work
+  II_SHADOW_PWD=/u01/installed/ingres/bin/ingvalidpw
+
+
+
+
+# ENVIROMENT: for local user (imho)
+
+export II_SYSTEM=/u01/ing
+export PATH=/usr/bin:/usr/sbin:$II_SYSTEM/ingres/bin:$II_SYSTEM/ingres/utility:$PATH
+export TERM_INGRES=putty
+
+
+# ENVIROMENT: can change
+
+  #System Administrator Guide
+  #UNIX: A good place to set user-defined environment variables is the user’s .login      
+  #(for the C shell) or profile (for the Bourne Shell) file.
+
+  #The following Ingres environment variables and logicals can be reset by users in 
+  #their local operating system shell:
+     DBNAME_ING
+     DBNAME_SQL_INIT
+     II_4GL_DECIMAL
+     II_ABF_RUNOPT
+     II_AFD_TIMEOUT
+     II_APPLICATION_LANGUAGE
+     II_DATE_CENTURY_BOUNDARY
+     II_DATE_FORMAT
+     II_DBMS_SERVER
+     II_DECIMAL
+     II_DML_DEF
+     II_EMBED_SET
+     II_FRS_KEYFIND
+     II_GC_REMOTE
+     II_GCA_LOG
+     II_GCx_TRACE
+     II_HELP_EDIT
+     II_LANGUAGE
+     II_MONEY_FORMAT
+     II_MONEY_PREC
+     II_NULL_STRING
+     II_PATTERN_MATCH
+     II_PF_NODE
+     II_POST_4GLGEN
+     II_PRINTSCREEN_FILE
+     II_SQL_INIT
+     II_SYSTEM
+     II_TEMPORARY
+     II_TERMCAP_FILE
+     II_TFDIR
+     II_TIMEZONE_NAME
+     II_TM_ON_ERROR
+     II_VNODE_PATH
+     II_WORK
+     IIDLDIR
+     ING_ABFDIR
+     ING_ABFOPT1
+     ING_EDIT
+     ING_PRINT
+     ING_SET
+     ING_SET_DBNAME
+     ING_SHELL
+     INGRES_KEYS
+     INIT_INGRES
+     TERM
+     TERM_INGRES
+    #Important! II_TIMEZONE_NAME can be reset for client installations only. Server 
+    #installations must not reset this logical because it may affect date conversions from 
+    #the local system time to the internal GMT-based value.
+
+
+
+
+# ENVIROMENT: can't change
+
+  #System Administrator Guide
+  #Environment Variables and Logicals that Cannot Be Reset
+  #The following Ingres environment variables and logicals must not be reset by users:
+     II_BIND_SVC_xx
+     II_C_COMPILER
+     II_CHARSETxx
+     II_CHECKPOINT
+     II_CLIENT
+     II_CONFIG
+     II_CONNECT_RETRIES
+     II_DATABASE
+     II_DBMS_LOG
+     II_DIRECT_IO
+     II_DUMP
+     II_ERSEND
+     II_GCNxx_PORT
+     II_INSTALLATION
+     II_JOURNAL
+     II_LOG_DEVICE
+     II_MSGDIR
+     II_NUM_SLAVES
+     II_TUXEDO_LOC
+     II_TUX_SHARED
+     II_TUX_AS_MAX
+     II_TUX_XN_MAX
+     II_XA_TRACE_FILE
+     ING_SYSTEM_SET
+  #UNIX: These environment variables and logicals must not be visible using the env or 
+  #printenv command.
+
+
+
+
+# FILES: db iidbdb
+
+  #Database Administrator Guide (p. 29)
+  
+  #The Master Database (iidbdb)
+  #The master database, created when Ingres is installed, named iidbdb, contains informati
+  on about all other Ingres databases in the installation, their locations, and the users 
+  who can access them.
+
+
+
+
+# INGSTART: all
+
+  #Command Reference Guide (p. 144)
+  #Permission required: Installation owner, privileged user.
+  
+  #The ingstart command starts an Ingres installation. It also checks that you have 
+  sufficient OS resources to run Ingres and have initialized the log file.
+  
+  #The ingstart utility starts all the elements of your installation in the correct 
+  sequence. It starts the Name Server, recovery and archiver processes, and DBMS servers.   
+  If you are authorized to run them, it also starts the Communications Server, Visual DBA 
+  Remote Command Server, and Star Server.
+  #Note: If a server or process is specified, only that component is started.
+  #Windows: We strongly recommend you start Ingres as a service. This ensures the 
+  processes will continue to execute after you log out. Use the following command with no 
+  further arguments: ingstart -service
+
+  #The ingstart command has the following format:
+ingstart [-client|-service|-iigcn|-dmfrcp|-dmfacp|-rmcmd| [-iidbms|-iigcc|-iigcb|-iigcd|-iistar|-oracle|-informix|-mssql| -sybase|-db2udb|-rdb|-rms [=config_name]]] [-cluster] [-node nodename] [-help]
+
+  -client
+  #Starts a client service by starting only a Name Server and Communications Server. Valid 
+  on Windows only.
+
+  -service
+  #Starts Ingres as a service. Valid on Windows only.
+  
+  -iigcn
+  #Starts the Name Server.
+
+  -dmfrcp
+  #Starts the recovery process.
+
+  -dmfacp
+  #Starts the archiver process.
+
+  -rmcmd
+  #Starts the Remote Command Server required by Visual DBA.
+
+  -iidbms
+  #Starts the DBMS Server. You can optionally specific a config_name as the name of the 
+  server.
+ 
+  -iigcc
+  #Starts the Communications Server. You can optionally specify a config_name as the name 
+  of the server.
+
+  -iigcb
+  #Starts the Bridge Server. You can optionally specify a config_name as the name of the 
+  server.
+
+  -iigcd
+  #Starts the Data Access Server. You can optionally specify a config_name as the name of 
+  the server.
+
+  -iistar
+  #Starts the Star Server. You can optionally specify a config_name as the name of the 
+  server.
+
+  -informix
+  #Starts Enterprise Access for Informix. Valid on UNIX and Windows only.
+
+  -mssql
+  #Starts Enterprise Access for MS SQL Server. Valid on Windows only.
+
+  -oracle
+  #Starts Enterprise Access for Oracle.
+
+  -rdb
+  #Starts Enterprise Access for RDB. Valid on VMS only.
+
+  -rms
+  #Starts Ingres RMS Access. Valid on VMS only.
+
+  -sybase
+  #Starts Enterprise Access for Sybase. Valid on UNIX and Windows only.
+
+  -db2udb
+  #Starts Enterprise Access for IBM DB2 UDB. Valid on UNIX and Windows only.
+
+  config_name
+  #Specifies the name of the server being started. To see a list of server names, click 
+  the Configure tab in Configuration Manager.
+
+  -cluster
+  #Starts Ingres on all nodes in the cluster. Valid in a cluster installation only.
+
+  -node nodename
+  #Starts Ingres on the specific node. Valid in a cluster installation only.
+
+  -help
+  #Displays command syntax online.
+
+
+  #Examples
+  
+  #This command starts an additional default DBMS Server:
+ingstart -iidbms
+  #Note: In a Windows environment, if Ingres was started as a service (with ingstart 
+  -service), then the additional DBMS Server will also be started as a service.
+  
+  #This command starts the “speedy” Communications Server:
+ingstart -iigcc=speedy
+
+  #On UNIX, this command starts the installation interactively using the configuration 
+  option, where $II_SYSTEM is set to /install/r6:
+setenv II_SYSTEM /install/r6 ingstart
+
+  #On UNIX, this command starts the installation automatically by including ingstart in  
+  the /etc/rc or other boot script, where userid is the user ID defined during installatio
+  n:
+su userid -c /install/r6/ingres/utility/ingstart \ > /dev/console
+
+
+
+
+# INGSTOP: all
+
+  #Command Reference Guide (p. 147)
+  #Permission required: Installation owner, privileged user.
+  #To use this command, you must be logged into the installation owner account.
+  
+  #Shuts down an Ingres installation. It stops the servers in an orderly fashion for 
+  reconfiguration or system shutdown. It automatically brings down all or selected server
+  -related processes in the installation. It can shut down servers, the archiver and 
+  recovery processes, and deallocate shared memory.
+  
+  #The ingstop command provides a graceful shutdown: the program waits for all traffic to 
+  terminate and for all users to exit from Ingres before shutting down the Ingres 
+  processes. You can optionally specify a forced shutdown.
+
+  #Because it is important that processes be brought down in the correct sequence, you 
+  should use ingstop whenever you shut down the entire installation. You can also use 
+  ingstop to shut down the locking and logging system.
+
+  #The ingstop command has the following format:
+ingstop [-iigcn|-dmfrcp|-dmfacp|-client|-rmcmd| [-iidbms|-iigcc|-iigcb|-iigcd|-iistar|-oracle|-informix|-mssql| -sybase|-db2udb|-rdb|-rms [= connect_id]]] [-f] [-timeout=minutes] [-kill] [-show |-check] [-force|-immediate] [-cluster] [-node nodename] [-help]
+
+  -iigcn
+  #Stops the Name Server.
+
+  -dmfrcp
+  #Stops the recovery process.
+
+  -dmfacp
+  #Stops the archiver process.
+
+  -client
+  #Stops a client service by stopping only a Name Server and Communications Server. Valid 
+  on Windows only.
+
+  -rmcmd
+  #Stops the Remote Command Server required by Visual DBA.
+
+  -iidbms
+  #Stops the DBMS Server.
+  #Note: If any DBMS Server has connected sessions, issuing ingstop –iidbms will not 
+  result in a graceful shutdown. The shutdown of the DBMS and Star servers will be aborted 
+  and these active servers will be re-opened for connections.
+
+  -iigcc
+  #Stops the Communications Server.
+
+  -iigcb
+  #Stops the Bridge Server.
+
+  -iigcd
+  #Stops the Data Access Server.
+  
+  -iistar
+  #Stops the Star Server.
+  
+  -informix
+  #Stops Enterprise Access for Informix. Valid on UNIX and Windows only.
+  
+  -mssql
+  #Stops Enterprise Access for MS SQL Server. Valid on Windows only.
+  
+  -oracle
+  #Stops Enterprise Access for Oracle.
+
+  #-rdb
+  #Stops Enterprise Access for RDB. Valid on VMS only.
+
+  -rms
+  #Stops Ingres RMS Access. Valid on VMS only.
+
+  -sybase
+  #Stops Enterprise Access for Sybase. Valid on UNIX and Windows only.
+
+  -db2udb
+  #Stops Enterprise Access for IBM DB2 UDB. Valid on UNIX and Windows only.
+
+  connect_id
+  #Specifies the connect ID of the server to be stopped. To see a list of DBMS server   
+  connect IDs, use the iinamu command.
+
+  -f
+  #Forces immediate shutdown. It initially quiesces all Net and DBMS servers. If active 
+  sessions remain after 30 seconds, a "STOP SERVER" forcible shutdown is issued to the 
+  DBMS Server, and equivalent hard stops are issued to all Net servers. Ingstop then waits 
+  indefinitely for the logging system to stop before completing the shutdown.
+  #To ensure shutdown within a reasonable amount of time, use –f with the –kill parameter, 
+  which uses a graduated approach:
+     It first tries a quiescent shutdown.
+     Then it attempts a STOP SERVER.
+     Finally, it executes a kill -9 hard kill of the servers.
+  #If STOP SERVER succeeds in shutting down the DBMS but the logging system remains active 
+  after 100 seconds, the logging system is forced to stop immediately (rcpconfig -imm_shut
+  down) or killed if it does not stop. Therefore, ingstop -f -k is appropriate for use in 
+  a system shutdown procedure.
+
+  -timeout=minutes
+  #Waits the specified number of minutes for active sessions to terminate before shutting   
+  down the installation.
+
+  -kill
+  #Shuts down the installation without waiting for currently executing transactions to 
+  complete. Transaction recovery will be required when the installation is restarted. Any 
+  Ingres processes that cannot be shut down by conventional means are terminated.
+  #This parameter is usually used with the –f parameter.
+
+  -force
+  #Forces the shut down of active servers in the installation without waiting for users to 
+  disconnect.
+
+  -immediate
+  #Shuts down the installation immediately. It does not wait for currently executing 
+  transactions to complete. Transaction recovery will be required when the installation is   
+  restarted.
+
+  -show | -check
+  #Displays a list of currently running Ingres processes, but does not shut them down.
+
+  -cluster
+  #Shuts down Ingres on all nodes in the cluster. Valid in a cluster installation only.
+
+  -node nodename
+  #Shuts down Ingres on the specified node. Valid in a cluster installation only.
+
+  -help
+  #Displays command syntax online.
+
+
+
+
+# INGSTATUS: all
+
+  #Command Reference Guide (p. 152)
+  #Valid on UNIX.
+  
+  #The ingstatus command shows the status (Running or Not active) of all Ingres server
+  -side processes.
+
+  #The ingstatus command has the following format:
+ingstatus
+
+
+
+
+# INSERT: all
+
+  #Examples:
+  
+  #Add a row to an existing table.
+INSERT INTO emp (name, sal, bdate)
+VALUES ('Jones, Bill', 10000, 1944);
+  
+  #Insert into the job table all rows from the newjob table where the job title
+  is not Janitor.
+INSERT INTO job (jid, jtitle, lowsal, highsal).
+SELECT job_no, title, lowsal, highsal
+FROM newjob
+WHERE title <> 'Janitor';
+
+  #Add a row to an existing table, using the default columns.
+INSERT INTO emp
+VALUES ('Jones, Bill', 10000, 1944);
+
+  #Use a structure to insert a row.
+  /* Description of table employees from
+  database deptdb */
+EXEC SQL DECLARE employees TABLE
+(eno SMALLINT NOT NULL,
+ename CHAR(20) NOT NULL,
+age SMALLINT,
+jobcode SMALLINT,
+sal FLOAT NOT NULL,
+deptno SMALLINT);
+EXEC SQL BEGIN DECLARE SECTION;
+emprec
+int eno;
+char ename[21];
+int age;
+int job;
+float sal;
+int deptno;
+EXEC SQL END DECLARE SECTION;
+/* Assign values to fields in structure */
+eno = 99;
+ename = "Arnold K. Arol”;
+age = 42;
+jobcode = 100;
+sal = 100000;
+deptno=47;
+EXEC SQL CONNECT deptdb;
+EXEC SQL INSERT INTO employees VALUES (:emprec);
+EXEC SQL DISCONNECT;
+
+  #Insert explicit values into a t1 row regardless of the identity column
+  definition. Without the OVERRIDING clause, this statement generates a
+  syntax error.
+INSERT INTO t1 OVERRIDING SYSTEM VALUE VALUES(1, 2, 3);
+
+  #Insert four rows into table emp.
+INSERT INTO emp (empno, deptno, sal)
+VALUES (698, 300, 850), (840, 100, 4400), (789, 400, 6500), (299, 500,
+3900);
+
+
+  #SQL Reference Guide (p. 681)
+  #Valid in: SQL, ESQL, DBProc, OpenAPI, ODBC, JDBC, .NET
+
+  #Syntax
+[EXEC SQL [REPEATED]]INSERT INTO [schema.]table_name
+[(column {, column})]
+[OVERRIDING SYSTEM VALUE|OVERRIDING USER VALUE]
+[VALUES (expr{, expr}) {,(expr{ ,expr})} |
+[WITH common_table_expression] subselect];
+
+  REPEATED
+  #Saves the execution plan of the insert, which can make subsequent
+  executions faster. For details, see Repeated Queries (see page 684).
+
+  column {,column}
+  #Identifies the columns of the specified table into which the values are
+  placed. When the column list is included, the DBMS Server places the
+  result of the first expression in the values list or subselect into the first
+  column named, the second value into the second column named, and so
+  on. The data types of the values must be compatible with the data types of
+  the columns into which they are placed.
+  
+  OVERRIDING SYSTEM VALUE
+  #Overrides the sequence value for a GENERATED ALWAYS AS IDENTITY
+  column with the explicit value specified in the VALUES clause. See CREATE
+  TABLE.
+  
+  OVERRIDING USER VALUE
+  #Overrides the sequence value for a GENERATED BY DEFAULT IDENTITY
+  column with the explicit value specified in the VALUES clause. See CREATE
+  TABLE.
+  
+  VALUES (expr{ ,expr}) {,(expr{ ,expr})} | subselect
+  #Specifies the values to be inserted as one of the following:
+     One or more comma-separated sets of lists of expressions, each
+  representing one row of values for insertion. The expressions in each
+  row must correspond with the column list specified.
+    INSERT INTO tbl (col1,col2) VALUES (1,’a’), (2,’b’), (3,‘c’);
+     A subselect, which inserts all the rows that result from the evaluation
+  of the subselect.
+    INSERT INTO tbl (col1,col2) SELECT a, b FROM tbl2;
+  #If a column corresponding to an expr is the identity column and there is no
+  OVERRIDING clause, the value must be DEFAULT.
+  
+  WITH common_table_expression
+  #Defines a common table expression (see page 845).
+
+
+
+
+# INSTANCE: what components is running?
+
+  #DBMS server process
+ps –ef | grep iidbms
+
+  #Name Server process
+ps –ef | grep iigcn
+
+  #Ingres Net Comminucations Server process
+ps –ef | grep iigcc
+
+
+
+
+# IIGCN: all
+
+  #Is running?
+ps –ef | grep iigcn
+
+  #Stop
+iinamu
+  stop
+
+
+
+
+# JAVA: connect #1 (via Esclipse)
+
+  #http://community.actian.com/wiki/Java_Example
+
+  #Export below Ingres's external jar to Esclipse:
+%II_SYSTEM%\ingres\lib\iijd bc.jar
+
+  #Connect to DB and retry entries
+ 
+  import java.sql.Connection;
+  import java.sql.DriverManager;
+  import java.sql.ResultSet;
+  import java.sql.ResultSetMetaData;
+  import java.sql.SQLException;
+  import java.sql.Statement;
+  
+  public class CountryList {
+  
+      // URL Components
+    private static String     demoHost = "172.22.109.250";
+  	private static String     demoPort = "BS7";
+  	private static String       demoDb = "demodb";
+  	private static String     demoUser = "user=ingres";
+  	private static String demoPassword = "password=Djljgfl!1";
+  	
+  
+      // JDBC Connection variables
+  	private static String    demoDbUrl = "jdbc:ingres://" + 
+  	                                     demoHost + 
+  	                                     ":" + demoPort +
+  	                                     "/" + demoDb + 
+  	                                     ";" + demoUser + 
+  	                                     ";" + demoPassword;
+      private static Connection conn = null;
+      private static Statement stmt = null;
+      
+      private static String tableName = "country";
+      
+      /**
+  	 * @param args
+  	 */
+  	public static void main(String[] args) {
+          System.out.println("Create connection to jdbc:ingres://" + 
+                  demoHost + 
+                  ":" + demoPort +
+                  "/" + demoDb +
+                  " ...");
+          createConnection();
+          System.out.println("Retrieve and print all countries found:");
+          retrieveCountries();
+  
+  	}
+  
+  	/**
+  	 * Create a connection to Ingres using the Ingres JDBC driver
+  	 * and the private variable demoDbUrl
+  	 */
+  	private static void createConnection()
+      {
+          try
+          {
+              Class.forName("com.ingres.jdbc.IngresDriver").newInstance();
+              //Get a connection
+              conn = DriverManager.getConnection(demoDbUrl); 
+          }
+          catch (Exception except)
+          {
+              except.printStackTrace();
+          }
+      }
+  	
+
+  	
+  	/**
+  	 * Retrieve and print all countries in the database.
+  	 */
+  	private static void retrieveCountries()
+      {
+          try
+          {
+              stmt = conn.createStatement();
+              ResultSet results = stmt.executeQuery("SELECT ct_name, ct_code " +
+              		"FROM " + tableName);
+              ResultSetMetaData rsmd = results.getMetaData();
+              int numberCols = rsmd.getColumnCount();
+              for (int i=1; i<=numberCols; i++)
+              {
+                  //print Column Names
+                  System.out.print(rsmd.getColumnLabel(i)+"\t\t");  
+              }
+  
+              System.out.println("\n====");
+  
+              while(results.next())
+              {
+                  String countryName = results.getString(1);
+                  String countryCode = results.getString(2);
+                  System.out.println(countryCode + "\t\t" + countryName);
+              }
+              results.close();
+              stmt.close();
+              
+              System.out.println("====\n");
+          }
+          catch (SQLException sqlExcept)
+          {
+              sqlExcept.printStackTrace();
+          }
+      }
+  	
+
+  
+  }
+
+
+
+
+# JAVA: connect #2 (via Eclipse)
+
+  #http://community.actian.com/wiki/Connecting_Ingres_to_Java_via_JDBC
+
+  #We are going to assume that Ingres and Java are already installed.
+  
+  #Set env
+vi ~/javaIngres.env  
+export JAVA_HOME=/u01/install/zip/java/jdk1.8.0_60
+export II_SYSTEM=/u01/ing
+export PATH=:$PATH
+export PATH=$JAVA_HOME/bin/:$CATALINA_HOME/bin:/usr/bin:/usr/sbin:$ANT_HOME/bin:$II_SYSTEM/ingres/bin:$II_SYSTEM/ingres/utility:$PATH
+export CLASSPATH=$JAVA_HOME/jre/lib/rt.jar:$JAVA_HOME/bin:$II_SYSTEM/ingres/lib:$II_SYSTEM/ingres/lib/iijdbc.jar:$CLASSPATH
+
+  #cd to dir which is already in CLASSPATH, or add that dir to CLASSPATH (in other case class won't be founded)
+
+  #Create java-file
+
+vi Airport.java
+
+import java.io.*;
+import java.sql.*;
+
+public class CountryList {
+
+  public static void main(String arg[]) 
+
+	{
+		String  url="";
+		int i;
+
+		try {
+				Class.forName ("com.ingres.jdbc.IngresDriver");
+				url="jdbc:ingres://172.22.109.250:BS7/demodb;";
+				Connection cnx = DriverManager.getConnection(url,"ingres","Djljgfl!1");
+				
+					Statement stmt = cnx.createStatement();
+			 			ResultSet rs = stmt.executeQuery ("select * from ingres.airport");
+						ResultSetMetaData rsmd = rs.getMetaData ();
+						int ncols = rsmd.getColumnCount ();
+						for (i=1; i<=ncols; i++) 
+						        {
+									if (i > 1)
+									//System.out.print(" ");
+									//Column name
+									System.out.print(rsmd.getColumnName(i)+"\t\t");
+									
+								}
+						
+						while(rs.next())
+							    
+								{
+									
+									//Column values
+									System.out.println(rs.getString(1) + "\t" + rs.getString(3));
+																		
+								} 
+						
+						//System.out.println("");
+					stmt.close();
+				cnx.close();
+			}
+		
+		catch (Exception ex) 
+			{
+				ex.printStackTrace ();
+			}
+	}
+
+}
+
+  #To compile this java file and create the executable class I just need to run:
+
+javac Airport.java
+
+  #To fire this class
+
+java Airport
+
+
+
+
+# JAVA: connect #3 (via jsp)
+
+
+  #Set env
+export JAVA_HOME=/u01/install/zip/java/jdk1.8.0_60
+export II_SYSTEM=/u01/ing
+export CATALINA_HOME=/u01/install/unzip/tomcat/apache-tomcat-7.0.64
+export PATH=:$PATH
+export PATH=$JAVA_HOME/bin/:$CATALINA_HOME/bin:/usr/bin:/usr/sbin:$ANT_HOME/bin:$II_SYSTEM/ingres/bin:$II_SYSTEM/ingres/utility:$PATH
+export CLASSPATH=$JAVA_HOME/jre/lib/rt.jar:$JAVA_HOME/bin:$CATALINA_HOME/webapps/apress/jsps:$II_SYSTEM/ingres/lib:$II_SYSTEM/ingres/lib/iijdbc.jar:$CLASSPATH
+
+  
+  #Context should contain info
+  
+  cursorMode=readonly
+	#This option generally improves response times by utilizing more block fetching of data and reducing database locking. While this option is now the default for the Ingres 2006 driver and does not need to be specified with the current release, this value was not the default in prior versions, including some initial releases of Ingres 2006.  Since this option is beneficial for new development, it doesn't hurt to always specify the option so there's no doubt about whether it's on or not.
+
+	autocommitMode=multi
+	#Applications that expect to keep multiple cursors (selects) open when AUTOCOMMIT is on will encounter errors such as “No MST in progress, trying to open additional cursor”.  If this error occurs, set this attribute.  When autocommit is on, Ingres only allows one cursor (select) to be open at a time.  Since autocommit is the default for  JDBC, the problem can easily occur.  Some of the other databases do not have this behavior and applications may have been coded with that expectation.  Setting this attribute causes the Ingres JDBC driver to emulate the behavior, and thereby allow multiple cursors to be open concurrently. Please see the Ingres JDBC driver documentation for details.
+
+  #Add that info to context
+
+vi $CATALINA_HOME/conf/context.xml
+
+<!-- My Ingres Example -->
+<Resource name="jdbc/IngresDB"
+              auth="Container" 
+              type="javax.sql.DataSource" 
+              username="ingres"
+              password="Djljgfl!1"
+              url="jdbc:ingres://172.22.110.143:BS7/demodb;cursor=readonly;auto=multi" 
+              driverClassName="com.ingres.jdbc.IngresDriver"
+              maxActive="8"
+              maxIdle="4"
+              maxWait="60000"
+              validationQuery="select 1"/>
+	      factory="org.apache.commons.dbcp.BasicDataSourceFactory"
+   <ResourceLink name="jdbc/IngresDB" global="jdbc/IngresDB" type="javax.sql.DataSource" />
+
+   
+   #Deploy jsp
+
+mkdir -p $CATALINA_HOME/webapps/ingres
+mkdir -p $CATALINA_HOME/webapps/ingres/lib
+mkdir -p $CATALINA_HOME/webapps/ingres/WEB-INF
+mkdir -p $CATALINA_HOME/webapps/ingres/jsp
+
+cp $II_SYSTEM/ingres/lib/iijdbc.jar $CATALINA_HOME/webapps/ingres/lib
+
+
+
+vi $CATALINA_HOME/webapps/ingres/WEB-INF/web.xml
+
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<web-app xmlns="http://java.sun.com/xml/ns/javaee"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+   version="2.5"> 
+</web-app>
+
+
+
+vi $CATALINA_HOME/webapps/ingres/jsp/h.jsp 
+
+
+<html>
+<head>
+<title>Access to Ingres server</title>
+</head>
+<body>
+<%@ page language="java" contentType="text/html" import="java.sql.*" import="javax.naming.*" import="javax.sql.*" import="com.ingres.jdbc.*"%>
+<h1>International airports list</h1>
+
+<%
+    Connection conn = null;
+    Statement stmt = null;
+    ResultSet rs = null;
+    javax.sql.DataSource ds = null;
+
+    try
+    {
+           Context initCtx = new InitialContext();
+           if( initCtx != null )
+           {                 
+              ds = (javax.sql.DataSource) initCtx.lookup("java:/comp/env/jdbc/IngresDB");
+           }
+    }
+    catch(Exception e)
+    {
+        System.out.println("DataSource Context not found");
+        System.out.println(e.toString());
+        throw new UnavailableException(this, "DataSource Context not found");
+    }
+
+    try
+    {
+          if( ds != null )
+          {
+              conn = ds.getConnection();
+
+              System.out.println("Got the connection successfully\n");
+
+              if( conn != null )
+              {
+                  stmt = conn.createStatement();
+                  rs = stmt.executeQuery("SELECT ap_iatacode,ap_name FROM airport");
+              }
+          }
+    }
+    catch(SQLException e)
+    {
+        System.out.println("An error occurs.");
+        System.out.println(e.toString());
+        throw new UnavailableException(this, "Cannot connect with the specified database.");
+    }
+
+%>
+
+<p>Return result:</p>
+
+<table border=1 cellpadding=2 cellspacing=0 width=200>
+<tr>
+        <th><b>IATA_CODE</b></th>
+        <th><b>AIRPORT_NAME</b></th>
+</tr>
+<% int countrows = 0; %>
+<% while (rs.next()) { %>
+<tr height="50">
+    <td height="16"><%= rs.getString(1) %></td>
+        <td height="16"><%= rs.getString(2) %></td>
+    <% countrows++; %>
+</tr>
+
+<% }
+     if( rs != null )
+         rs.close();
+     if( stmt != null )
+         stmt.close();
+     if( conn != null )
+        conn.close();
+     System.out.println("Successfully closed the Database connection.");
+%>
+
+</table>
+<p><%=countrows%> row(s) found.</p>
+
+</body>
+</html>
+
+
+  #Check
+
+http://172.22.110.143:8080/ingres/jsp/h.jsp  
+
+
+
+
+# LOCATION: create 
+
+    -llocname
+    Identifies the name of the new or existing location.
+    
+    -aarea_dir
+    Specifies the directory (area_dir) that the new location will point to. 
+    This option creates the full directory path ...
+
+... #######!!! below the ingres root location (ingres/data/default/$DB will be added automatically during creation) !!!####### ... 
+    
+    Use this option when creating a new location only.
+    
+    -Udata,ckp,jnl,dmp,work|awork
+    Specifies the usage for the new location. Valid usages include data (database), ckp (checkpoint), jnl (journal), dmp (dump), work (work), and (awork) auxiliary work.
+    
+    -rraw_pct
+    Specifies, for Raw locations, the percentage of the Raw Area to be allocated to this location. Use this option when creating a new location only. Do not use it when extending a database to an existing location.
+
+extenddb -lleis -nodb -a/leis/ingres92_data/leis -Udata -r0
+
+
+
+
+# LOCATION: drop
+
+extenddb -lleis -drop
+
+
+
+
+# LOCATION: view
+
+
+  #All locations
+  
+sql iidbdb
+select * from iilocations\g
+
+
+  #Just non-default locations (not ii_database, ii_dump, etc...)
+
+sql iidbdb
+select * from iilocations where lname not like 'ii_%'\g  
+
+
+
+
+# LOCATION VAR: common
+    
+    #On installation
+    #You cannot change the values you assign to the default Ingres
+    storage location variables once this setup procedure has been completed.
+    However you can create additional storage locations and assign
+    individual databases to them.  For information on creating additional
+    storage locations, refer to the Database Administrator's Guide.
+
+    Variable              Description
+    --------              -----------
+    II_DATABASE           Default location for database files
+    II_CHECKPOINT         Default location for full backup snapshots
+    II_JOURNAL            Default location for journals (backup audit trails)
+    II_DUMP               Default location for on-line backup change logs
+    II_WORK               Default location for temporary files
+
+
+
+
+# LOCATION VAR: II_DATABASE
+    
+    #On installation
+    #Once a value has been assigned to II_DATABASE, you can change it only
+by removing and re-installing Ingres. Refer to the Database
+Administrator's Guide for information on moving the default database
+file location.
+
+
+
+
+# LOCATION VAR: II_CHECKPOINT, II_JOURNAL, II_DUMP
+  
+    #On installation
+    #The Ingres variables II_CHECKPOINT, II_JOURNAL, and II_DUMP are
+    used to store the default locations used for full and incremental
+    on-line backup files.  It is essential that II_CHECKPOINT, II_JOURNAL,
+    and II_DUMP not be assigned to the same physical device as
+    II_DATABASE.  If this restriction is ignored, you will be unable to
+    recover lost data in the event that the II_DATABASE location fails.
+    
+    #Once assigned, the values of II_CHECKPOINT, II_JOURNAL, and II_DUMP
+    can only be changed by removing and re-installing Ingres.
+    Refer to the Database Administrator's Guide for
+    information on moving the default backup locations.
+    
+    #Refer to the chapter on "Backup and Recovery" in the Database
+    Administrator's Guide for instructions on backup and recovery
+    of Ingres databases.
+
+    #Do not store checkpoint, journal or dump files for a database on
+    the same physical device as its data, or you will not be able to
+    recover the data stored on that device if it fails.
+
+
+
+
+# LOCATION VAR: II_WORK
+    
+    #On installation
+    #The Ingres variable II_WORK stores the default location used for
+    all temporary files created during external sorts and other DBMS server
+    operations that require large amounts of temporary file space.
+    Ingres lets you designate a separate storage device as the default
+    location for these files.
+    
+    #When choosing the II_WORK location, be aware that temporary files tend
+    to increase fragmentation on storage devices, which can lead to
+    decreased performance.  For this reason, you should assign II_WORK to a
+    physical device which does not contain database, checkpoint, journal,
+    or dump files, if possible.  Your choice of the default work location
+    does not affect your ability to recover lost data in the event of a
+    storage device failure, although it may affect performance.
+    
+    #Once assigned, the value of II_WORK can only be changed by removing
+    and re-installing Ingres. Refer to the Database Administrator's
+    Guide for instructions on moving the default work location in this
+    manner.
+
+
+
+
+# LOCATION VAR: transaction log
+
+    #On installation
+    The Ingres DBMS uses a transaction log file to store
+    uncommitted transactions and buffer committed transactions before they
+    are written to the database file location(s).
+    
+    #In order to guarantee that no committed transactions can be lost in
+    the event of a single storage device failure, a backup of the Ingres
+    transaction log should be maintained on a storage device which is
+    independent of the primary transaction log file device.
+    
+    #By default, Ingres will maintain a backup of the primary transaction
+    log file on a storage location which you select.
+    
+    #You have the option of disabling the backup transaction log file,
+    although you should only do so if the location you intend to use
+    for your primary transaction log file has built-in fault tolerance
+    (e.g. a fault-tolerant disk array or "mirrored" disk sub-system).
+
+
+
+
+# NET UTILITY: netutil
+
+  #Command reference Giude (p. 196)
+  #The netutil command invokes the Net Management Utility, a forms-based program for 
+  configuring Ingres Net. 
+  The Net Management Utility allows you to store and manage the information—connection 
+  data and remote user authorizations—needed by the Communications Server and Bridge 
+  Server to connect to remote installations.
+
+  #The netutil command has the following format:
+netutil [-u user] [-vnode vnode] [-file filename{,filename}]
+
+  -u user
+  #Specifies the effective user name for the session. When creating private connection 
+  information, the information will be stored for the specified user.
+
+  -vnode vnode
+  #Identifies the name of the remote node on which the connection information is to be 
+  stored. This vnode name must have been configured previously through either the netutil 
+  or ingnet utility.
+
+  -file filename{,filename}
+  #Operates netutil non-interactively. All statements in the specified control file are  
+  executed.
+  When the input file name is specified as - (a single dash character), input is taken 
+  from the standard input channel. This allows the user to enter commands directly from 
+  the keyboard.
+
+  #Examples
+  #Edit private connection information for the user emma:
+netutil -uemma
+  
+  #Edit connection information for the previously defined node new_york:
+netutil -vnode new_york
+
+  #Run netutil in interactive mode, taking input from the keyboard, for the user emma on   
+  the remote node new_york:
+netutil -uemma -vnode new_york -file-
+
+
+
+
+# NET UTILITY: ingnet
+
+  #Command reference Giude (p. 144)
+  #Permission required: Access to the directory where the utility is located.
+  #The Network Utility (ingnet) is a stand-alone tool that permits you to view and define 
+  Ingres Net node definitions, which then allows you to connect to remote Ingres installat
+  ions through Ingres Net. Also allows you to launch the stand-alone Database Object 
+  Manager, Monitor, and SQL Scratchpad windows for such installations.
+
+  #The ingnet command has the following format:
+ingnet [-vnode=vnode]
+
+  -vnode=vnode
+  #Specifies the name of the remote node on which the connection information is to be 
+  stored. This vnode must have been configured previously through either the ingnet or 
+  netutil utilities.
+
+
+
+
+# NOCONTINUE: how
+
+  #Terminates executiona right after first encountered error
+  
+\nocontinue\g
+select * from part1\g    <== if this will fault (table doesn't exist, for example) ...
+select * from part2\g    <== ... this step and further won't be executed
+select * from part3\g
+
+
+
+
+# PATCH: what is installed?
+
+cat $II_SYSTEM/ingres/version.dat
+
+  ## action      performed        status  patch seq  version
+	##
+	install   16-Aug-2015 11:01:27  valid   14814   1  II 10.1.0 (su9.us5/126)  <== last one
+	install   04-Sep-2014 19:45:45  valid   14709   1  II 10.1.0 (su9.us5/126)
+	##
+	## File format information (DO NOT REMOVE):
+	##   _filetype_b_filetype_
+	##   _protocol_1_protocol_
+	##	
+
+OR
+	
+cat $II_SYSTEM/ingres/version.rel
+
+	II 10.1.0 (su9.us5/126)
+	14814                                                          <== last path installed
+	------------------------------------------------------------
+	II 10.1.0 (su9.us5/126)
+	14709
+	------------------------------------------------------------
+	II 10.1.0 (su9.us5/126)
+
+
+
+
+# PRIVILEGE: grant
+
+  #Examples
+
+  #1. Grant select and update privileges on the salary table to the group,   acct_clerk.
+GRANT SELECT, UPDATE ON TABLE salary
+TO GROUP acct_clerk;
+
+  #2. Grant update privilege on the columns, empname and empaddress, in the
+  employee table to the users, joank and gerryr.
+GRANT UPDATE(empname, empaddress)
+ON TABLE employee
+TO joank, gerryr;
+
+  #3. Grant permission to the public to execute the monthly_report procedure.
+GRANT EXECUTE ON PROCEDURE monthly_report
+TO PUBLIC;
+
+  #4. Define a query_row_limit privilege of 100 rows on the new_accts database
+  for users in the group, new_emp.
+GRANT QUERY_ROW_LIMIT 100 ON DATABASE new_accts
+TO GROUP new_emp;
+
+  #5. Grant unlimited rows to the role identifier, update_emp, which allows
+  unlimited rows to be returned to any application that is associated with the
+  role identifier, update_emp.
+GRANT NOQUERY_ROW_LIMIT ON DATABASE new_acct
+TO ROLE update_emp;
+
+  #6. Enable the inventory_monitor role to register for and raise the stock_low
+  database event.
+GRANT REGISTER, RAISE ON DBEVENT stock_low
+TO ROLE inventory_monitor
+
+  #7. Enable any employee in accounting to change columns containing salary
+  information.
+GRANT UPDATE ON employee.salary, employee.socsec
+TO GROUP accounting;
+
+  #8. Enable the accounting manager, rickr, complete access to salary
+  information and to grant permissions to other user.
+GRANT ALL ON employee TO rickr WITH GRANT OPTION;
+
+  #9. Enable any user to create a table constraint that references the employee
+  roster.
+GRANT REFERENCES ON emp_roster TO PUBLIC;
+
+
+  #SQL Reference Guide (p. 647)
+  #The GRANT (privilege) statement grants privileges on the database as a whole
+  or on individual tables, views, sequences or procedures. It controls access to
+  database objects, roles, and DBMS resources. Details about using the GRANT
+  statement with role objects is described in Grant (role) (see page 662).
+  #To remove privileges, use the REVOKE statement. To determine the privileges
+  in effect for a session, use the DBMSINFO function. In some cases granting a
+  privilege imposes a restriction, and revoking the privilege removes the
+  restriction. For example, GRANT NOCREATE_TABLE prevents the user from
+  creating tables.
+  #Note: The GRANT statement is the ISO/ANSI-compliant method for controlling
+  access to database objects and resources.
+  #To display granted database privileges, select data from the iidbprivileges
+  system catalog.
+  
+
+  #Syntax
+
+[EXEC SQL] GRANT ALL [PRIVILEGES] | privilege {, privilege}
+[ON [object_type] [schema.]object_name {, [schema.]object_name}]
+TO PUBLIC | [auth_type] auth_id {, auth_id} [WITH GRANT OPTION];
+
+  privilege
+  #Specifies the privilege, which must be valid for the object_type.
+  #Valid privileges are described under the section Object Privileges (see
+  page 649).
+
+  object_type
+  #Specifies the type of object on which you are granting privileges.
+  Object_type must be one of the following:
+    TABLE
+    #(Default) Controls access to individual tables or views.
+    DATABASE
+    #Controls access to database resources.
+    PROCEDURE
+    #Controls who can execute individual database procedures.
+    DBEVENT
+    #Controls who can register for and raise specific database events.
+    SEQUENCE
+    #Controls who can retrieve values from individual database sequences.
+    CURRENT INSTALLATION
+    #Grants the specified privilege on the current installation.
+  #The object_type must agree with the privilege being granted (for example,
+  EXECUTE privilege cannot be granted on a table).
+  #Privileges cannot be defined for more than one type of object in a single
+  GRANT statement. If object_type is CURRENT INSTALLATION,
+  object_name must be omitted.
+
+  object_name
+  #Specifies the name of the table, view, procedure, database event,
+  sequence or database for which the privilege is being defined. The object
+  must correspond to the object_type. For example, if object_type is TABLE,
+  object_name must be the name of an existing table or view.
+  
+  auth_type
+  #Specifies the type of authorization to which you are granting privileges. A
+  GRANT statement cannot contain more than one auth_type. Valid
+  #auth_types are:
+    USER
+    GROUP
+    ROLE
+  #The auth_ids specified in the statement must agree with the specified
+  auth_type. For example, if you specify auth_type as GROUP, all auth_ids
+  listed in the statement must be group identifiers.
+  #Default: USER
+
+  PUBLIC
+  #Grants a privilege to all users. The auth_type parameter can be omitted.
+
+  auth_id
+  #Specifies the name of the users, groups, or roles to which you are granting
+  privileges, or PUBLIC. Both PUBLIC and a list of auth_ids can be specified
+  in the same GRANT statement. If the privilege is subsequently revoked
+  from PUBLIC, the individual privileges still exist.
+  
+  
+  #1) Object Privileges
+  The privilege granted depends on the type of object it affects: TABLE,
+  DATABASE, PROCEDURE, DBEVENT, or SEQUENCE.
+
+    #1.1) TABLE Privileges
+    #Table privileges control access to tables and views. By default, only the owner
+    of the table has privileges for the table. To enable others to access the table,
+    the owner must grant privileges to specific authorization IDs or to public. Table
+    privileges must be granted explicitly.
+    #Valid table privileges are:
+      SELECT
+      #Allows grantee to select rows from the table.
+      INSERT
+      #Allows grantee to add rows to the table.
+      UPDATE
+      #Allows grantee to change existing rows. To limit the columns that the
+      grantee can change, specify a list of columns to allow or a list of columns
+      to exclude.
+      #To grant the privilege for specific columns, use the following syntax after
+      the UPDATE keyword in the GRANT statement:
+        (column_name {, column_name)
+      #To grant the privilege for all columns except those specified, use the
+      following syntax after the UPDATE keyword in the GRANT statement:
+        EXCLUDING (column_name {, column_name})
+      #If the column list is omitted, update privilege is granted to all columns of
+      the table or, for views, all updatable columns.
+      DELETE
+      #Allows grantee to delete rows from the table.
+      REFERENCES
+      #Allows grantee to create referential constraints that reference the specified
+      tables and columns. For details about referential constraints, see Create
+      Table (see page 519). A list of columns to allow or to exclude can
+      optionally be specified.
+      #To grant the privilege for specific columns except those specified, use the
+      following syntax after the REFERENCES keyword in the GRANT statement:
+        (column_name {, column_name})
+      #To grant the privilege for all columns except those specified, use the
+      following syntax after the REFERENCES keyword in the GRANT statement:
+        EXCLUDING (column_name {, column_name})
+      #If the column list is omitted, references privilege is granted to all columns
+      of the table. The references privilege cannot be granted on a view.
+      COPY_INTO
+      #Allows the grantee to issue the COPY...INTO statement on a table. This
+      privilege can be granted on tables only.
+      COPY_FROM
+      #Allows the grantee to issue the COPY...FROM statement on a table. This
+      privilege can be granted on tables only.
+      ALL [PRIVILEGES]
+      #Grants the subset of select, insert, update, delete, and references
+      privileges for which the grantor has GRANT OPTION. For details, see Grant
+      All Privileges Option (see page 657).
+    #When privileges are granted against a table, the date and timestamp of the
+    specified table is updated, and the DBMS Server recreates query plans for
+    repeat queries and database procedures that see the specified table.
+
+    #1.2) TABLE Privileges for Views
+    The privileges required to enable the owner of a view to grant privileges on the
+    view are as follows:
+      SELECT
+      #View owner must own all tables and views used in the view definition, or
+      view owner or public must have GRANT OPTION for SELECT for the tables
+      and views used in the view definition.
+      INSERT
+      #View owner must own all tables and views used in the view definition, or
+      view owner or public must have GRANT OPTION for INSERT for the tables
+      and views used in the view definition.
+      UPDATE
+      #View owner must own all tables and updatable columns in views used in
+      the view definition, or view owner or public must have GRANT OPTION for
+      UPDATE for the tables and updatable columns in views used in the view
+      definition.
+      DELETE
+      #View owner must own all tables and views used in the view definition, or
+      view owner or public must have GRANT OPTION for DELETE for the tables
+      and views used in the view definition.
+    #To grant privileges for views the grantor does not own, the grantor must have
+    been granted the specified privilege WITH GRANT OPTION.
+
+    #1.3) DATABASE Privileges
+    #Database privileges control the consumption of computing resources.
+    #To override the default for a database privilege, grant a specific value to
+    PUBLIC. For example, by default, everyone (PUBLIC) has the privilege to
+    create database procedures. To override the default, grant
+    NOCREATE_PROCEDURE to PUBLIC, and grant the CREATE_PROCEDURE
+    privilege to any user, group, or role that you want to have this privilege.
+    (Users, groups, and roles are referred to collectively as authorization IDs.)
+    #Database privileges do not apply to DBAs in their own databases, nor to
+    security administrators.  
+    #The database privileges in effect for a session are determined by the values
+    that were granted to the authorization IDs in effect for the session, according
+    to the following hierarchy:
+      1. Role
+      2. User
+      3. Group
+      4. Public
+    #For example, if different values for QUERY_ROW_LIMIT are granted to PUBLIC,
+    and to the user, group, and role that are in effect for a session, the value for
+    the role of the session prevails.
+    #Valid database privileges are as follows:
+      [NO]ACCESS
+      #Allows the specified authorization IDs to connect to the specified database.
+      NOACCESS prevents the specified authorization IDs from connecting.
+      #Note: The access bitmask of the iidatabase_info catalog is set only if
+      database utilities are used to change the access rights to the database.
+      Using a GRANT [NO]ACCESS ON DATABASE dbname TO PUBLIC statement
+      does not change the access from global to private or vice versa in
+      iidatabase_info.
+      [NO]CREATE_PROCEDURE
+      #Allows the specified authorization IDs to create database procedures in the
+      specified database.
+      #NOCREATE_PROCEDURE prevents the specified users, groups, or roles
+      from creating database procedures.
+      Default: All authorization IDs can create database procedures.
+      [NO]CREATE_SEQUENCE
+      #Allows the specified authorization IDs to create, alter and drop sequences
+      in the specified database.
+      #NOCREATE_SEQUENCE prevents the specified authorization IDs from
+      creating sequences. By default, all authorization IDs can create, alter and
+      drop sequences.
+      [NO]CREATE_TABLE
+      #Allows the specified authorization IDs to create tables in the specified
+      database.
+      #NOCREATE_TABLE prevents the specified authorization IDs from creating
+      tables.
+      Default: All authorization IDs can create tables.
+      [NO]DB_ADMIN
+      #Confers unlimited database privileges for the specified database and the
+      ability to specify effective user (using the -u flag). A session that has the
+      DB_ADMIN privilege does not have all the rights that a DBA has; some
+      utilities can be run only by a DBA. The DBA of a database and users with
+      the SECURITY privilege have the DB_ADMIN privilege by default. For all
+      other users, the default is NODB_ADMIN.
+      [NO]LOCKMODE
+      #Allows the specified authorization IDs to issue the SET LOCKMODE
+      statement.
+      #NOLOCKMODE prevents the specified users, groups, or roles from issuing
+      the SET LOCKMODE statement.
+      #Default: Everyone can issue the SET LOCKMODE statement.
+      [NO]QUERY_COST_LIMIT
+      #Specifies the maximum cost per query on the database, in terms of disk
+      I/O and CPU usage.
+      #Default: Authorization identifiers are allowed an unlimited cost per query.
+      [NO]QUERY_CPU_LIMIT
+      #Specifies the maximum CPU usage per query on the database.
+      #Default: Authorization identifiers are allowed unlimited CPU usage per
+      query.
+      [NO]QUERY_IO_LIMIT
+      #Specifies the maximum estimated number of I/O requests allowed for a
+      single query for the specified authorization IDs when connected to the
+      specified database. Integer must be a non-negative integer (or 0 to specify
+      that no I/O is performed).
+      #NOQUERY_IO_LIMIT grants an unlimited number of I/O requests per
+      query.
+      #Default: NOQUERY_IO_LIMIT
+      [NO]QUERY_PAGE_LIMIT
+      #Specifies the maximum number of pages per query on the database.
+      #Default: Authorization identifiers are allowed an unlimited number of
+      pages per query.
+      [NO]QUERY_ROW_LIMIT
+      #Query_row_limit integer specifies the maximum estimated number of rows
+      returned by a single query for the specified authorization IDs when
+      connected to the specified database. Integer must be a positive number
+      (or 0 to specify that no rows are returned).
+      #NOQUERY_ROW_LIMIT allows a single query to return an unlimited
+      number of rows.
+      #Default: NOQUERY_ROW_LIMIT
+      [NO]UPDATE_SYSCAT
+      #Allows the specified authorization IDs to update system catalogs when
+      working in a session connected to the iidbdb.
+      [NO]SELECT_SYSCAT
+      #Allows a session to query system catalogs to determine schema
+      information. When connected to the iidbdb database, this includes the
+      master database catalogs such as iiuser and iidatabase. SELECT_SYSCAT
+      can be granted to user, group, role or public, and can only be issued when
+      connected to the iidbdb database.
+      #This privilege restricts user queries against the core DBMS catalogs
+      containing schema information, such as iirelation and iiattribute. Standard
+      system catalogs such as iitables can still be queried.
+      [NO]CONNECT_TIME_LIMIT
+      #Limits the total connect time that a session can consume. The connect
+      time is checked periodically by the DBMS Server and if the limit has been
+      exceeded for a session, it is disconnected, rolling back any open database
+      transactions.
+      #The units are seconds. The maximum connection time limit is
+      approximately 130 years. The minimum connection time limit is 1 second.
+      #As with other database privileges this can be granted to user, group, role
+      or public, and can only be issued when connected to the iidbdb database.
+      #Default: No limit, that is, a session can remain connected indefinitely.
+      [NO]IDLE_TIME_LIMIT
+      #Specifies the time that a session can take between issuing statements. The
+      idle time for each session is checked periodically by the DBMS Server, and
+      if a session exceeds its idle time limit it is disconnected, rolling back any
+      open database transactions.
+      #The units are seconds. The maximum idle time limit is approximately 130
+      years. The minimum idle time limit is 1 second. Idle_time_limit can be
+      granted to user, group, role or public, and can only be issued when
+      connected to the iidbdb database.
+      #Default: No limit, that is, a session can remain idle indefinitely without
+      being disconnected.
+      [NO]SESSION_PRIORITY
+      #Determines whether a session is allowed to change its priority, and if so,
+      its initial and highest priority. 
+      #If NOSESSION_PRIORITY (the default) is specified, users can not alter
+      their session priority.
+      #If SESSION_PRIORITY is specified, users can alter their session priority, up
+      to the limit determined by the privilege.
+      [NO]TABLE_STATISTICS
+      #Allows users to view (by way of SQL and statdump) and create (by way of
+      optimizedb) database table statistics.
+      #If statistics exist in the database catalogs the DBMS Server automatically
+      uses them when processing queries, even if the user does not possess this
+      privilege.
+      [NO]TIMEOUT_ABORT
+      #Allows the specified authorization IDs to issue the SET JOINOP
+      TIMEOUTABORT statement.
+      #NOTIMEOUT_ABORT prevents the specified users, groups, or roles from
+      issuing the SET JOINOP TIMEOUTABORT statement.
+      #Default: Everyone can issue the SET JOINOP TIMEOUTABORT statement.
+    #Note: The restrictions set by QUERY_COST_LIMIT, QUERY_CPU_LIMIT,
+    QUERY_IO_LIMIT, QUERY_PAGE_LIMIT, and QUERY_ROW_LIMIT are enforced
+    based on estimates from the DBMS query optimizer. If the optimizer predicts
+    that a query consumes more I/Os than allowed by the session, the query is
+    aborted prior to execution. The accuracy of the optimizer's estimates can be
+    impeded by out-of-date or insufficient statistics about the contents of tables.
+    
+    #1.4) PROCEDURE Privileges
+    #The EXECUTE privilege allows the grantee to execute the specified database
+    procedures. To grant the EXECUTE privilege on database procedures, the
+    owner of the procedure must have GRANT OPTION for all the privileges
+    required to execute the procedure. To grant the EXECUTE privilege on
+    database procedures that the grantor does not own, the grantor must have
+    EXECUTE privilege WITH GRANT OPTION for the database procedure.
+    
+    #1.5) DBEVENT Privileges
+    Database event privileges are as follows:
+      RAISE
+      #Allows the specified authorization IDs to raise the database event (using
+      the RAISE DBEVENT statement)
+      REGISTER
+      #Allows the specified authorization IDs to register to receive a specified
+      database event (using the REGISTER DBEVENT statement)
+
+    #1.6) SEQUENCE Privileges
+    #The sequence privilege is as follows:
+      NEXT
+      #Allows the grantee to execute the NEXT VALUE and CURRENT VALUE
+      functions on the specified sequences. To grant the NEXT privilege on
+      sequences, the grantor must either own the sequence or have NEXT
+      privilege WITH GRANT OPTION for the sequence.
+
+  
+  #Privilege Defaults
+  #SQL Reference Guide (p.656)
+
+  #GRANT ALL PRIVILEGES Option
+  #The following sections describe the results of the GRANT ALL PRIVILEGES
+option.
+    
+    #1.1) Installation and Database Privileges
+    #If GRANT ALL PRIVILEGES ON DATABASE or GRANT ALL PRIVILEGES ON
+    CURRENT INSTALLATION is specified, the grantees receive the following
+    database privileges:
+       NOQUERY_IO_LIMIT
+       NOQUERY_ROW_LIMIT
+       CREATE_TABLE
+       CREATE_PROCEDURE
+       LOCKMODE
+       RAISE DBEVENT
+       REGISTER DBEVENT
+    #Privileges granted on a specific database override privileges granted on current
+    installation.
+
+    #1.2) Other Privileges
+    #The requirements for granting all privileges on tables, views, database
+    procedures, and database events depend on the type of object and the owner.
+    To grant a privilege on an object owned by another user, the grantor or public
+    must have been granted the privilege WITH GRANT OPTION. Only the
+    privileges for which the grantor or public has GRANT OPTION are granted.
+    #The following example illustrates the results of the GRANT ALL PRIVILEGES
+    option. The accounting_mgr user creates the following employee table:
+      CREATE TABLE employee (name CHAR(25), department CHAR(5),
+      salary MONEY)...
+    and, using the following GRANT statement, grants the accounting_supervisor
+    user the ability to select all columns but only allows accounting_supervisor to
+    update the department column (to prevent unauthorized changes of the salary
+    column):
+      GRANT SELECT, UPDATE (department) ON TABLE employees TO accounting_supervisor
+      WITH GRANT OPTION;
+    If the accounting_supervisor user issues the following GRANT statement:
+      GRANT ALL PRIVILEGES ON TABLE employees TO accounting_clerk;
+    the accounting_clerk user receives SELECT and UPDATE(department)
+    privileges.
+
+    #1.3) Granting All Privileges on Views
+    #SQL Reference Guide (p.658)
+
+  #GRANT OPTION Clause
+  #To enable an authorization ID to grant a privilege to another authorization ID,
+  specify the WITH GRANT OPTION clause. The owner of an object can grant any
+  privilege to any authorization ID (or to public). The authorization ID to whom
+  the privilege is granted WITH GRANT OPTION can grant only the specified
+  privilege. Any authorization ID can grant privileges that were granted to
+  PUBLIC WITH GRANT OPTION to any other authorization ID.
+  #The GRANT OPTION cannot be specified for database privileges.
+  For example, if user, tony, creates a table called mytable and issues the
+  following statement:
+    GRANT SELECT ON tony.mytable TO laura
+    WITH GRANT OPTION;
+  User, laura, can select data from tony.mytable and can authorize user evan to
+  select data from tony.mytable by issuing the following statement:
+    GRANT SELECT ON tony.mytable TO evan;
+  Because user laura did not specify the WITH GRANT OPTION clause, user evan
+  cannot authorize another user to select data from tony.mytable. User laura
+  can grant SELECT privilege, but cannot grant, for example, INSERT privilege.
+  #If user tony revokes SELECT permission from user laura (using the REVOKE
+  statement), user tony must specify how the DBMS must handle any dependent
+  privileges that user laura has issued.
+  The choices are:
+    REVOKE...CASCADE
+  Revokes all dependent privileges. In the preceding example, SELECT
+  permission is revoked from user evan.
+    REVOKE...RESTRICT
+  Does not revoke specified privileges if there are dependent privileges. In
+  the preceding example, SELECT privileges are not revoked from user laura
+  because her grant to user evan depends on the privileges she received
+  from user tony.
+
+
+
+
+# PRIVILEGES: view on table
+
+  #Connect to the necessary DB
+  
+sql lp05
+
+  #View list of all tables and indexes
+  
+help\g
+
+  #View all permits on particual table
+  
+help permit on TABLE tpr_chg \g
+
+
+  
+  
+# PRIVILEGES: view on DB
+
+  #SQL Reference Guide (p.647)
+  #To display granted database privileges, select data from the iidbprivileges
+  system catalog.
+  #From iidbdb DB:
+select * from iidbprivileges
+
+
+
+
+# PROCESSES: rmcmd
+
+  #Is running?
+ps -ef | grep rmcmd
+
+  #Start
+ingstart -rmcmd
+
+  #Stop
+rmcmdstp
+
+  #This removes the Remote Command views and dbevents
+rmcmdrmv
+
+  #This command regenerates the Remote Command views and
+  database events with default permissions
+rmcmdgen
+
+
+  #System Administrator Guide (p. 26)
+
+  #Some options and dialogs in Visual DBA result in the launch of an operating system 
+  level command (such as createdb or destroydb) on the server. These "remote commands" are 
+  performed by the Remote Command Server (RMCMD) process on behalf of Visual DBA.
+  #The Remote Command Server (RMCMD) allows remote execution of operating system commands. 
+  It must be started in installations where a DBMS server is running for certain DBA tasks 
+  to be accessible remotely with Visual DBA. The Remote Command Server is started on the 
+  server side, not on the Visual DBA client.
+  #DBA tasks are primarily those that do not have an equivalent through an SQL statement, 
+  for example, creating or dropping a database, displaying selected portions of the 
+  journal for a database, or starting a replication server remotely. By default, only the 
+  installation owner is authorized to perform such tasks remotely through Visual DBA.
+  #The rmcmd process is started and stopped with Ingres, according to the settings for the 
+  Remote Command component in CBF or Configuration Manager.
+
+  
+  #Grant Access to Remote Users
+ 
+  #To allow a user other than the installation owner to execute remote commands, you can 
+  use either of the following methods:
+     You use the Create or Alter User dialog in VDBA. Enable the Remote Command (rmcmd) 
+    Privileges checkbox.
+     You can execute the following SQL statements, while connected to the imadb database   
+    as the installation owner:
+      grant select,insert,update,delete on $ingres.remotecmdinview to user
+      grant select,insert,update,delete on $ingres.remotecmdoutview to user
+      grant select,insert,update,delete on $ingres.remotecmdview to user
+      grant execute on procedure $ingres.launchremotecmd to user
+      grant execute on procedure $ingres.sendrmcmdinput to user
+      grant register, raise on dbevent $ingres.rmcmdcmdend to user
+      grant register, raise on dbevent $ingres.rmcmdnewcmd to user
+      grant register, raise on dbevent $ingres.rmcmdnewinputline to user
+      grant register, raise on dbevent $ingres.rmcmdnewoutputline to user
+      grant register, raise on dbevent $ingres.rmcmdstp to user
+  Note: Grants must not be made directly to the underlying tables.
+
+ 
+  #How Remote Commands Are Executed
+  
+  #Operating system commands executed by the Remote Command (rmcmd) Server are executed on 
+  the server side under the user ID that launched that server (typically the installation 
+  owner).
+  #For commands that support the –u option, the rmcmd server will accept the command 
+  execution request only if it contains a –uusername argument, where username is the user 
+  ID of the session through which the client application (typically VDBA) does the request
+  For commands that do not support the –u option, such as sysmod, alterdb, or relocatedb, 
+  the request will be accepted only if the user ID of the session is the same as the user 
+  who launched the rmcmd server on the server side.
+
+
+
+
+# SCHEMA: all
+
+  #Command Reference Guide (p.20)
+  #A schema is a collection of database objects, such as tables. Each table, view, and   
+  synonym belongs to a schema that is determined when the object is created. The schema 
+  name corresponds to the user who owns the object. The schema name allows you to 
+  distinguish between objects with identical names but different owners.
+  #You can specify a schema name for a table, view, or synonym on the command line to   
+  specify ownership. You use the following syntax:
+schema.objectname
+  #The period (.) must immediately follow the schema name and precede the object name, 
+  with no intervening spaces. Both the schema name and the object name can be delimited 
+  identifiers.
+  #For example, to specify the table named “empinfo” having a schema name of dave, you 
+  would specify the table name as:
+dave.empinfo
+  #You do not use a schema name when referencing a table, view, or synonym; for example, 
+  you specify the table name as:
+empinfo
+  #The search looks first for an object with a schema corresponding to the current user; 
+  then it looks for an object owned by the DBA to which you have access. Lastly, if the 
+  object name begins with ii, the search looks for a system catalog with that name.
+
+
+
+
+# STAR: how to dblink
+
+  #http://community.actian.com/wiki/CreateStarDatabase
+
+  #This workshop assumes that you have already installed/created:
+    A local Ingres server.
+    A local Ingres database with a table .
+  
+  #To link a table from another ingres server, you will need:
+    Another Ingres server with a database.
+    An Ingres/Net connection from this local server to the remote server .
+    A database on the remote server, with a populated table. 
+
+
+
+
+# TABLE: create
+
+  #http://community.actian.com/wiki/Workshops/Create/Populate/Create_an_Ingres_Table_Using_SQL
+  
+  #1) Using a system editor (eg notepad, wordpad, vi) create a file.
+  #The name of the file is not important
+touch table.sql
+
+  #2) In the file, add a CREATE TABLE command
+CREATE TABLE part
+   ( partno integer not null
+      ,descrip varchar(20)
+      ,country char(2)
+      )
+\g 
+
+  #3) Execute the file against your database
+sql userndb <table.sql  
+
+
+
+
+# TABLE: drop
+
+drop table testtable
+\g
+
+
+
+
+# TABLE: populate
+
+
+
+
+# TABLE: find
+
+  #Certain table at certain DB
+set TERM_INGRES=puttyutf8
+sql testdb
+select table_name, table_owner, create_date, alter_date, modify_date,  table_stats, table_indexes, num_rows, is_journalled  from iitables
+where table_name = 't'
+\g
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬────────────────────────────────┬─────────────────────────┬─────────────────────────┬─────────────────────────┬──────┬──────┬──────────────────────┬──────┐
+  │table_name                                                                                                                                                                                                                                                      │table_owner                     │create_date              │alter_date               │modify_date              │table_│table_│num_rows              │is_jou│
+  ├────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────┼─────────────────────────┼─────────────────────────┼─────────────────────────┼──────┼──────┼──────────────────────┼──────┤
+  │t                                                                                                                                                                                                                                                               │ingres                          │2015_09_10 10:24:58 GMT  │2015_09_10 10:24:58 GMT  │2015_09_10 10:24:58 GMT  │N     │N     │                     0│Y     │
+  └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴────────────────────────────────┴─────────────────────────┴─────────────────────────┴─────────────────────────┴──────┴──────┴──────────────────────┴──────┘
+
+
+
+
+# TABLE: list all tables at the particular DB
+
+  #User defined tables and indexes
+
+sql lp05
+help\g
+
+	#System and user defined tables
+
+export DB=testdb
+sql $DB	
+select table_name from iitables  where table_type = 'T'\g\q
+	
+	#Only system defined tables
+
+export DB=testdb
+sql $DB
+select table_name from iitables  where table_type = 'T' and system_use = 'U' and table_name like 'ii%'\g\q
+
+	#Only user defined tables
+
+export DB=testdb
+sql $DB	
+select table_name from iitables  where table_type = 'T' and system_use = 'U' and table_name not like 'ii%'\g\q
+
+
+
+
+# TERMINAL: configure
+
+    #Form-based Application Development Tools User Guide
+    #All of the tools and languages in this guide are designed for use on character-based terminals. Therefore, they all make use of the Forms Runtime System (FRS) to display a graphical-looking form on non-graphical, character-based terminals.
+    FRS was originally designed for use in UNIX or VAX midrange environments with VT-style ASCII terminals. When you use FRS, an environment variable, term_ingres, defines the type of character-based terminal you are using and a termcap file provides the hardware-to-software mapping FRS uses to determine which key was pressed. The standard termcap file delivered with Ingres supports over 500 varieties of character-based terminals and can be easily customized to support others.
+
+    #Character-based Querying and Reporting Tools User Guide
+Defining your terminal allows you to use the forms-based utilities and the many features of Ingres. Your computer system can support a wide variety of terminals, each with its own particular characteristics.
+The termcap file contains a description of all terminals supported by Ingres, including their color capabilities and available function, control, and arrow keys. Each supported terminal has a termcap description that is based on the vendor's specifications for that device. This appendix lists supported terminals. For unsupported terminals, you must write your own termcap descriptions. For more information, see the appendix "Writing Termcap Descriptions."
+When you start the Forms Run-time System, it uses the TERM_INGRES environment variable/logical to determine the user's terminal type and verifies basic terminal attributes. The terminal type defined by TERM_INGRES tells the Forms Run-time System, which terminal description to read from the Ingres termcap file. The type is checked only once for each session, so the user must exit the current session to reset TERM_INGRES to change terminal types.
+Forms Run-time System key definitions can be changed dynamically by the installation, terminal type, user, and application key mapping files. For more information on key mapping, see the appendix "Defining Function and Control Keys."
+
+  #Specifies the termcap definition to be used by the forms system
+export TERM_INGRES=putty
+
+  #Character-based Querying and Reporting Tools User Guide (p.630)
+    Terminal Type                           Menu Key   Name
+    ...
+    SUN CONSOLE                             ESC        sun
+    PuTTY                                   F1         putty
+    ...
+  #Installation suggests this one
+    linux          Linux virtual console
+    konsole        KDE konsole xterm (xfree 4.x.x)
+    konsolel       KDE konsole xterm xfree 4.x.x line drawing
+    putty          PuTTY Emulator (ESC[j~ fn keys)
+    puttyutf8      PuTTY Emulator (ESC[j~ fn keys UTF8)
+    ibmpcd         IBM/PC Color Direct Screen Writes for INGRES frontends without l
+    vt100fwc       vt100f in 132 mode that can change terminal size
+    vt100fc        vt100f that can change terminal size
+    vt100f         vt100 with 4.0 function key support
+    vt100fw        vt100,132cols with 4.0 function key support
+    vt100fnl       vt100f with no line drawing
+    vt100fwnl      vt100fw with no line drawing
+    vt200-8i       run vt200 in 7 bit with nextitem mapped and reset to 8 bit
+    vt200-8iw      run in 7 bit, 132 mode with nextitem and reset to 8 bit
+    vt200-8w       vt200 in 132 columns and put back to 8 bits on exit
+    vt200-8        vt220 and put back to 8 bits on exit
+    vt200c         vt220 in 7 bit that can change terminal size
+    vt200wc        vt220 in 7 bit 132 mode and change change size
+    vt200          vt200 7 bit with keys
+    vt200w         vt200 with 132 columns
+    vt100wnl       vt100 in 132 mode with no line drawing
+    vt100knl       vt100 with key pad but no line drawing
+    sun            Sun Microsystems Workstation console
+    sunm           Sun Microsystems Workstation console
+
+
+
+
+# TERMINAL: work in
+
+  #Make file with some command
+notepad verify.txt
+select dbmsinfo ('username')
+\g\q
+  
+  #Fire that file in necessary db
+sql bs::iidbdb <verify.txt
+    +----------------------------------------------------------------+
+    |col1                                                            |
+    +----------------------------------------------------------------+
+    |ingres                                                          |
+    +----------------------------------------------------------------+
+    (1 row)
+
+
+
+
+# USER: create
+
+    #http://community.actian.com/wiki/DBMS_Authentication_Workarounds
+    #To create a DBA user, simply create a user as normal and then create a database owned     
+    #by the user.
+sql iidbdb
+CREATE USER mydba\p\g\q
+createdb testdb -umydba
+
+    #To create an Ingres super user create a user almost as normal and specify super user 
+    #privileges:
+sql iidbdb
+CREATE USER mysuper WITH PRIVILEGES=(SECURITY)\p\g\q
+
+
+
+
+# USER: view list (version 1)
+
+sql iidbdb	
+select user_name from iiusers
+\g
+
+  lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk
+  xuser_name                       x
+  tqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqu
+  x$ingres                         x
+  xingres                          x
+  xroot                            x
+  mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj
+  (3 rows)
+  continue
+  *
+
+
+
+
+# USER: view list (version 2)
+
+accessdb -> users -> SQLscript
+
+  lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqk
+   x SQL 'CREATE USER' commands written                                         x
+   x  to file '/opt/ingres9.2/ingres/users.sql'                                 x
+   x                                                        [PRESS RETURN]      x
+   mqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqj
+
+
+
+
+# VERSION: which?
+
+cat $II_SYSTEM/ingres/version.dat
+
+  ## action      performed        status  patch seq  version
+	##
+	install   16-Aug-2015 11:01:27  valid   14814   1  II 10.1.0 (su9.us5/126)  
+	install   04-Sep-2014 19:45:45  valid   14709   1  II 10.1.0 (su9.us5/126)
+	##
+	## File format information (DO NOT REMOVE):
+	##   _filetype_b_filetype_
+	##   _protocol_1_protocol_
+	##
+
+OR	
+
+cat $II_SYSTEM/ingres/version.rel
+
+	II 10.1.0 (su9.us5/126)
+	14814
+	------------------------------------------------------------
+	II 10.1.0 (su9.us5/126)
+	14709
+	------------------------------------------------------------
+	II 10.1.0 (su9.us5/126)
+
+
+
+
+# USER: view current
+
+select dbmsinfo ('username')
+
+
+
+
+# USER: view info
+
+set TERM_INGRES=puttyutf8
+sql iidbdb
+select * from iiuser
+\g
+
+  ┌────────────────────────────────┬──────┬──────┬─────────────┬────────────────────────────────┬────────────────────────┬────────┬────────────────────────────────┬─────────────┬─────────────────────────┬─────────────┬─────────────┐
+  │name                            │gid   │mid   │status       │default_group                   │password                │reserve │profile_name                    │default_priv │expire_date              │flags_mask   │user_priv    │
+  ├────────────────────────────────┼──────┼──────┼─────────────┼────────────────────────────────┼────────────────────────┼────────┼────────────────────────────────┼─────────────┼─────────────────────────┼─────────────┼─────────────┤
+  │$ingres                         │     0│     0│       125465│                                │                        │\000\000\000\000\000\000\000\000│                                │       125465│                         │        16392│       125465│
+  │sergii.burtovyi                 │     0│     0│            1│                                │                        │\000\000\000\000\000\000\000\000│                                │            1│                         │        81980│            1│
+  │mydba                           │     0│     0│            0│                                │                        │\000\000\000\000\000\000\000\000│                                │            0│                         │        16384│            0│
+  │ingres                          │     0│     0│       125465│                                │                        │\000\000\000\000\000\000\000\000│                                │       125465│                         │        16392│       125465│
+  │root                            │     0│     0│       125465│                                │                        │\000\000\000\000\000\000\000\000│                                │       125465│                         │        16392│       125465│
+  └────────────────────────────────┴──────┴──────┴─────────────┴────────────────────────────────┴────────────────────────┴────────┴────────────────────────────────┴─────────────┴─────────────────────────┴─────────────┴─────────────┘
+
+
+
+
+# UTILITIES: sql
+
+  #Command Reference Guide (p.249)
+  #The sql command invokes the line-based Terminal Monitor for SQL, as described in the   
+  SQL Reference Guide.
+
+  #The sql command has the following format:
+sql [SQL option flags] [line-mode flags] dbname |vnode::dbname[/server_class] [<altin] [>altout]
+
+  #SQL option flags
+  #Specifies flags that can be used with the line-based Terminal Monitor and other   
+  commands where noted. The SQL option flags determine the format of output or the 
+  behavior of the DBMS. You can specify a maximum of twelve SQL option flags. The flags 
+  are as follows:
+    -cN
+    #Sets the minimum field width for printing character columns to N. The default is 6.
+
+    -fkxM.N
+    #Sets floating-point output column width to M characters (total), including N decimal 
+    places, and (if warranted) e+-xx and the decimal indicator character itself.
+    #k can be 4 or 8 to apply to f4’s or f8’s respectively.
+    #x can be E, F, G or N (uppercase or lowercase) to specify an output format. E 
+    indicates exponential format. F indicates floating-point format. G indicates the 
+    floating-point format and guarantees decimal alignment. N indicates floating-point 
+    format, decimal alignment, and right-justification.
+    #If you specify N or G and the number is too large for the format indicated by the 
+    flag, it is displayed in exponential format. To prevent this format overflow, M should 
+    be greater than or equal to N + 7.
+    #The default display format for both f4 and f8 is n10.3, unless your computer supports 
+    the IEEE standard for floating-point numbers, in which case the display format for f4 
+    and f8 is n11.3.
+
+    -ikN
+    #Sets integer output column width to N. k can be 1, 2, or 4 for i1’s, i2’s, or i4’s, 
+    respectively. The default for N is 6 for i1 and i2 fields, and 13 for i4 fields.
+
+    -tN
+    #Sets the minimum field width for printing text columns to N. The default is 6.
+
+    +U|-U
+    #Enables (+U) or disables (-U) user updating of the system catalogs and secondary 
+    indexes, and takes an exclusive lock on the database. To update system catalogs, you 
+    must have the update system tables privilege obtained through accessdb.
+    #On VMS, enclose this flag in double quotation marks ("+U" or "-U").
+
+    +Y|-Y
+    #Enables (+Y) or disables (-Y) user updating of the system catalogs and secondary 
+    indexes, but does not take an exclusive lock on the database.
+    #On VMS, enclose this flag in double quotation marks ("+Y" or "-Y").
+
+    +user=authuser
+    #Specifies the user name and password used for connection authentication, as described     
+    in Standard Flags and Parameters (see page 15).
+
+    -uusername
+    #Specifies the effective user for the session, as described in Standard Flags and 
+    Parameters (see page 15).
+
+    -Ggroupid
+    #Specifies a group identifier, as described in Standard Flags and Parameters (see page 
+    15).
+    #On VMS, enclose this flag in double quotation marks (“-Ggroupid”).
+
+    -Rroleid
+    #Specifies a role identifier for the session, as described in Standard Flags and   
+    Parameters (see page 15).
+    #On VMS, enclose this flag in double quotation marks (“-Rroleid”)
+
+    -l
+    #Locks the database for your exclusive use. When you specify this flag, no one else 
+    can open the database while you are in it. If you attempt to take an exclusive lock on 
+    a database that is in use, the system informs you that the database is temporarily 
+    unavailable.
+
+    -nM
+    #Sets modify mode on the index command to M. M must be one of the following storage   
+    structures: ISAM, CISAM, B-tree, CB-tree, Hash, or CHash. The default is ISAM.
+
+    +w|-w
+    #Indicates to wait (+w) or not wait (-w) for the database. The default is -w. If you 
+    specify +w, you must wait if certain processes are running (sql –l, sql –U, verifydb, 
+    rollforwarddb, or sysmod) on the given database, before the operation proceeds.
+    #If you specify –w and the database is not available, a message is returned and 
+    execution is stopped. If you omit the w flag and the database is unavailable, an error 
+    message is returned if running in foreground (more precisely, if the standard input is 
+    from a terminal). Otherwise, the wait option is invoked.
+    #On VMS, this flag is not valid in batch mode.
+
+    -numeric_overflow = fail | warn | ignore
+    #Sets error handling mode for numeric overflow, underflow, and division by zero.
+    #fail—(Default) Aborts the statement and issues an error message. For ANSI-compliant     
+    behavior, use this setting (or omit the flag).
+    #warn—Issues a warning message
+    #ignore—Issues no error message
+
+    -string_truncation = fail | warn | ignore
+    #Sets error handling mode for string truncation errors. This error occurs if you 
+    attempt to insert a string into a table column that is too short to contain the value.
+    #fail—Aborts the statement and issues an error message. For ANSI-compliant behavior, 
+    use this setting.
+    #warn—Truncates and inserts the string but issues a warning message.
+    #ignore—(Default) Truncates and inserts the string without issuing an error message.
+
+  
+  line-mode flags
+  #Specify flags that can be used with the line-based Terminal Monitor only. The flags are   
+  as follows:
+    +a|-a
+    #Sets (+a) or clears (-a) the autoclear option in the terminal monitor. The default is     
+    +a.
+
+    +d|-d
+    #Prints (+d) or does not print (-d) the dayfile. The default is +d.
+
+    +s|-s
+    #Prints (+s) or does not print (-s) the monitor messages, including prompts. The     
+    default is +s. If you specify -s, the dayfile is not displayed.
+
+    -S
+    #Runs the Terminal Monitor in silent mode, which shows query output only, and   
+    suppresses headers, footers, separators, lines, and row counts. This allows simple 
+    reports to be created as SQL scripts and then run without having to edit the output.
+
+    -vX
+    #Sets the column separator to the character specified by X. The default is vertical 
+    bar (|).
+    
+    -Ppassword
+    #Specifies the user password.
+
+    -Rrole-name/role-password
+    #Identifies the role name and optional role password. Separate the name and password 
+    with a slash (/).
+
+    -history_recall
+    #Invokes the terminal monitor with history recall functionality, which lets you 
+    retrieve the history of commands typed in the session, and perform other functions. 
+    #For details, see the SQL Reference Guide.
+
+    -nohistory_recall
+    #Invokes the terminal monitor without history recall functionality.
+    
+dbname
+Specifies the name of the database, and if required, the vnode and server_class, as described in Standard Flags and Parameters (see page 15).
+<altin
+Specifies a file from which the Terminal Monitor reads commands. The file must contain all terminal monitor commands needed to run the session. On VMS, no space is allowed between the < character and the file name.
+>altout
+Directs output from the Terminal Monitor to the specified file. If you specify this parameter, you will not see any output. On VMS, no space is allowed between the > character and the file name.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
