@@ -1,0 +1,1520 @@
+
+
+
+
+                ###### DB MAINTENANCE #######
+
+
+
+
+# ALERT LOG: location
+
+    #In general case
+    
+$ORACLE_BASE/diag/rdbms/<sid>/<sid>/trace/alert_<sid>.log
+
+    #In current DB
+    
+select value from v$parameter where name='background_dump_dest';
+
+    /opt/vendor/oracle/diag/rdbms/tstupgrd/tstupgrd/trace
+    
+    
+    
+
+# ACL: view
+
+    #All network and ACL assignments
+    
+set linesize 180
+COLUMN host FORMAT A30
+COLUMN acl FORMAT A55
+SELECT host, lower_port, upper_port, acl  FROM   dba_network_acls;
+
+    HOST                           LOWER_PORT UPPER_PORT ACL
+    ------------------------------ ---------- ---------- ----------------------
+    10.44.21.1                             80         80 /sys/acls/billing.xml
+    10.44.2.101                          8080       8080 /sys/acls/cpa.xml
+
+    
+    #All users and privileges associated with all ACL
+    
+set linesize 180 pagesize 500
+COLUMN acl FORMAT A30
+COLUMN principal FORMAT A30
+SELECT acl, principal, privilege, is_grant, TO_CHAR(start_date, 'DD-MON-YYYY') AS start_date, TO_CHAR(end_date, 'DD-MON-YYYY') AS end_date FROM dba_network_acl_privileges ORDER BY PRINCIPAL;
+
+    ACL                            PRINCIPAL           PRIVILE IS_GR START_DATE  END_DATE
+    ------------------------------ ------------------- ------- ----- ---------- ---------
+    /sys/acls/stis.xml             XPRESS_CREDIT       connect true
+    /sys/acls/smtp.xml             XPRESS_CREDIT       connect true
+
+
+
+
+# ACL: assign
+
+    #ACL created previously being assigned to a specific IP address and a subnet
+    
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.assign_acl (
+    acl         => '/sys/acls/all.xml',
+    host        => '*',
+    lower_port  => 10,
+    upper_port  => 9999);
+  COMMIT;
+END;
+/
+
+    --
+    
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.assign_acl (
+    acl         => 'test_acl_file.xml',
+    host        => '10.44.0.11', 
+    lower_port  => 8443,
+    upper_port  => NULL); 
+
+  DBMS_NETWORK_ACL_ADMIN.assign_acl (
+    acl         => 'test_acl_file.xml',
+    host        => '10.1.10.*', 
+    lower_port  => NULL,
+    upper_port  => NULL);
+
+  COMMIT;
+END;
+/
+
+
+
+
+# ACL: add user
+
+BEGIN
+  DBMS_NETWORK_ACL_ADMIN.add_privilege ( 
+    acl         => '/sys/acls/all.xml', 
+    principal   => 'LITVINOV',
+    is_grant    => TRUE, 
+    privilege   => 'connect', 
+    position    => NULL, 
+    start_date  => NULL,
+    end_date    => NULL);
+  COMMIT;
+END;
+/
+
+
+
+
+# ARCHIVE LOG DEST: which exist
+
+set linesize 160 pagesize 99
+col DESTINATION forma a40
+col NAME format a9
+col VALID_NOW format a10
+col VALID_ROLE format a12
+col LOG_SEQ for 9999999
+col error format a5
+col PROC for a4
+col sync for a4
+select substr(DEST_NAME, 13) as NAME, DESTINATION, STATUS, TARGET, LOG_SEQUENCE as LOG_SEQ, VALID_NOW,  error, VALID_TYPE, VALID_role, PROCESS as proc, substr(TRANSMIT_MODE,1,4) as sync from V$ARCHIVE_DEST 
+where status !='INACTIVE';
+
+    NAME      DESTINATION                              STATUS    TARGET   LOG_SEQ VALID_NOW  ERROR VALID_TYPE      VALID_ROLE   PROC SYNC
+    --------- ---------------------------------------- --------- ------- -------- 
+    DEST_1    /app/oracle/product/11.2.0.3/dbs/arch    VALID     PRIMARY        0 YES              ALL_LOGFILES    ALL_ROLES    ARCH SYNC
+
+
+
+
+# ARCHIVE MODE: view
+
+archive log list
+
+    Database log mode              No Archive Mode
+    Automatic archival             Disabled
+    Archive destination            /opt/vendor/oracle/product/11.2.0.3/dbs/arch
+    Oldest online log sequence     5062
+    Current log sequence           5064
+
+
+
+
+# ARCHIVE MODE: change it
+
+    #ON
+    
+shutdown immediate
+startup mount;
+alter database archivelog;
+archive log start;
+alter database open;
+
+    #OFF
+    
+shutdown immediate
+startup mount
+alter database noarchivelog;
+alter database open;
+
+
+
+
+# ASH: available dates 
+
+set linesize 180
+col min_time for a20
+col max_time for a20
+select to_char(min (sample_time),'dd-mm-yyyy hh24:mi:ss') as min_time, to_char(max(sample_time),'dd-mm-yyyy hh24:mi:ss') as max_time from V$ACTIVE_SESSION_HISTORY;
+
+    MIN_TIME             MAX_TIME
+    -------------------- --------------------
+    23-10-2014 11:07:22  23-10-2014 11:46:24
+
+
+
+
+# ASH: take a report
+
+    #From TOAD
+    
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'C:\Users\Sergiy.Burtoviy\Desktop\Хлам\ash\itsdb 20150203 10_40-10_45.html' 
+select output from 
+table(DBMS_WORKLOAD_REPOSITORY.ASH_REPORT_HTML((select dbid from v$database),
+   '1', TO_DATE('2015-02-03 10:40:00', 'YYYY-MM-DD HH24:MI:SS'),
+  TO_DATE('2015-02-03 10:45:00', 'YYYY-MM-DD HH24:MI:SS'), 0))
+  ;
+spool off;
+
+
+
+
+# AWR: snapshot
+
+    #View 
+    
+set linesize 121 pagesize 0
+col instart_fmt noprint;
+col inst_name format a12 heading 'Instance';
+col db_name format a12 heading 'DB Name';
+col snap_id format 99999990 heading 'Snap Id';
+col snapdat format a20 heading 'Snap Started' just c;
+col lvl format 99 heading 'Snap|Level';
+set heading on;
+break on inst_name on db_name on host on instart_fmt skip 1;
+ttitle off;
+SELECT TO_CHAR(s.startup_time,'dd-mm-yyyy HH24:MI:SS') INSTART_FMT,
+di.instance_name INST_NAME, di.db_name DB_NAME, s.snap_id SNAP_ID,
+TO_CHAR(s.end_interval_time,'dd-mm-yyyy HH24:MI:SS') SNAPDAT,
+s.snap_level LVL
+FROM dba_hist_snapshot s, dba_hist_database_instance di
+WHERE di.dbid = s.dbid
+AND di.instance_number = s.instance_number
+AND di.startup_time = s.startup_time
+and di.instance_name = (select instance_name from v$instance)
+ORDER BY snap_id;
+
+    base         BASE              5252 07 DEC 2014 03:00      1
+                                   5253 07 DEC 2014 04:00      1
+
+
+    #Create
+    
+exec dbms_workload_repository.create_snapshot;
+
+
+
+
+# AWR: take a report
+
+    #Oracle DB 11g
+
+        #Single report
+        
+        DBMS_WORKLOAD_REPOSITORY.AWR_REPORT_HTML(
+           l_dbid       IN    NUMBER,      -- Database identifier
+           l_inst_num   IN    NUMBER, -- Instance number
+           l_bid        IN    NUMBER,    -- The 'Begin Snapshot' ID
+           l_eid        IN    NUMBER,      -- The 'End Snapshot' ID
+           l_options    IN    NUMBER DEFAULT 0) -- A flag to specify to control the output of the report. Currently, Oracle supports one value: l_options - 8. Displays the ADDM specific portions of the report. These sections include the Buffer Pool Advice, Shared Pool Advice, and PGA Target Advice.
+         RETURN awrrpt_text_type_table PIPELINED;
+         
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'D:\sburt\Khlam\awr\nhwkpt 170214 16_00-17_00.html'
+SELECT output FROM TABLE(dbms_workload_repository.AWR_REPORT_HTML(
+l_dbid=> (SELECT dbid FROM v$database), 
+l_inst_num => (SELECT inst_id FROM gv$instance), 
+l_bid => 33586, 
+l_eid => 33587));
+spool off
+
+
+        #Compare reports
+        
+        dbms_workload_repository.awr_diff_report_html(
+        dbid1     IN NUMBER,
+        inst_num1 IN NUMBER,
+        bid1      IN NUMBER,
+        eid1      IN NUMBER,
+        dbid2     IN NUMBER,
+        inst_num2 IN NUMBER,
+        bid2      IN NUMBER,
+        eid2      IN NUMBER)
+        RETURN awrrpt_html_type_table PIPELINED;
+        
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'C:\Users\Sergiy.Burtoviy\Desktop\Хлам\awr\kstest01 20150128_20150126 11_00-12_00.html'
+SELECT output FROM TABLE(dbms_workload_repository.awr_diff_report_html(
+dbid1 => (SELECT dbid FROM v$database),
+inst_num1 => (SELECT inst_id FROM gv$instance),
+bid1 => 1543,
+eid1 => 1544,
+dbid2 => (SELECT dbid FROM v$database),
+inst_num2 => (SELECT inst_id FROM gv$instance),
+bid2 => 1591,
+eid2 => 1592));
+spool off
+
+
+    #Oracle DB 10g
+    
+        #Single report
+        
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'C:\Users\Sergiy.Burtoviy\Desktop\Хлам\awr\itsd 20150205 14_00-14_30.html'
+SELECT output FROM TABLE(dbms_workload_repository.AWR_REPORT_HTML((SELECT dbid FROM v$database), (SELECT inst_id FROM gv$instance), 56055, 56056));
+spool off
+
+        
+        #Compare reports
+    
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'C:\Users\Sergiy.Burtoviy\Desktop\Хлам\awr\itsd 20150203_20150203 10_01-11_01.html'
+SELECT output FROM TABLE(dbms_workload_repository.awr_diff_report_html((SELECT dbid FROM v$database),(SELECT inst_id FROM gv$instance),55835,55836,(SELECT dbid FROM v$database),(SELECT inst_id FROM gv$instance),56003,56004));
+spool off
+AWR: take sql report
+DBMS_WORKLOAD_REPOSITORY.awr_sql_report_html (
+   l_dbid       IN    NUMBER,      -- Database identifier
+   l_inst_num   IN    NUMBER, -- Instance number
+   l_bid        IN    NUMBER,    -- The 'Begin Snapshot' ID
+   l_eid        IN    NUMBER,      -- The 'End Snapshot' ID
+l_sqlid    IN VARCHAR2,
+   l_options    IN    NUMBER DEFAULT 0) -- A flag to specify to control the output of the report. Currently, Oracle supports one value: l_options - 8. Displays the ADDM specific portions of the report. These sections include the Buffer Pool Advice, Shared Pool Advice, and PGA Target Advice.
+ RETURN awrrpt_text_type_table PIPELINED;
+ 
+ 
+ 
+ 
+# AWR: take a report for specific sql
+
+set pagesize 0
+set linesize 2000
+ALTER SESSION set NLS_DATE_LANGUAGE = AMERICAN;
+spool 'D:\sburt\Khlam\awr\awr_nhwkpt_sql.html'
+SELECT * FROM TABLE(dbms_workload_repository.awr_sql_report_html(
+l_dbid=> (SELECT dbid FROM v$database), 
+l_inst_num => (SELECT inst_id FROM gv$instance), 
+l_bid => 33586, 
+l_eid => 33587, 
+l_sqlid => 'ayw78zp93fxjd'));
+spool off
+
+
+
+
+# CONTROLFILE: list
+
+set linesize 160
+col controlfile_name format a60
+select name as controlfile_name from v$controlfile;
+
+    CONTROLFILE_NAME
+    ------------------------------------------------------------
+    /u01/oradata/fiamut/control01.ctl
+    /u01/oradata/fiamut/control02.ctl
+
+
+
+
+# COMMAND LINE: run sql script
+
+sqlplus / as sysdba @tst.sql
+
+
+
+
+# DF: list
+
+    #List
+    
+set linesize 180 pagesize 500
+col name for a90
+select file#, name from v$datafile order by file#;
+
+         FILE# NAME
+    ---------- ------------------------------------------------------------------
+             1 /u01/oradata/nhwkpt/system01.dbf
+             2 /u01/oradata/nhwkpt/sysaux01.dbf
+
+
+
+
+# DF: view SCN of DF
+
+set linesize 90 pagesize 50
+col name for a50
+select checkpoint_change#, status, file#, name  from v$datafile order by file#;
+
+    CHECKPOINT_CHANGE# STATUS       FILE# NAME
+    ------------------ ------- ---------- 
+              85013645 SYSTEM           1 /u02/oradata/lnp1vmtr/system01.dbf
+              85013646 ONLINE           2 /u02/oradata/lnp1vmtr/sysaux01.dbf
+    ...
+
+
+
+
+# DF: view SCN of DF header
+
+set linesize 90 pagesize 50
+col name for a40
+select checkpoint_change#, status, fuzzy, file#, name from v$datafile_header order by file#;
+
+    CHECKPOINT_CHANGE# STATUS  FUZ      FILE# NAME
+    ------------------ ------- --- ---------- ----------------------------------------
+              85013645 ONLINE  NO           1 /u02/oradata/lnp1vmtr/system01.dbf
+              85013646 ONLINE  NO           2 /u02/oradata/lnp1vmtr/sysaux01.dbf
+                 20479 ONLINE  NO          11 /u03/oradata/lnp1vmtr/leis_indx04.dbf
+    ...
+
+
+
+
+# DB: installed components
+
+    #INVALID                : One or more objects for this component are invalid
+    #VALID                    : All objects for this component are valid
+    #LOADING             : Load script for this component is executing 
+    #LOADED               : Load script for this component reached the end
+    #UPGRADING        : Upgrade script for this component is executing
+    #UPGRADED          : Upgrade script for this component reached the end 
+    #DOWNGRADING : Downgrade script for this component is executing
+    #DOWNGRADED  : Downgrade script for this component reached the end 
+    #REMOVING          : Components is in the process of being removed 
+    #OPTIONOFF            : This component was installed, but is not currently enabled 
+    #NOSCRIPT             : This component is enabled, but there is no upgrade/downgrade 
+                            script for this component
+
+set line 200;
+set pagesize 9999;
+col COMP_ID format a15;
+col COMP_NAME format a50;
+select COMP_ID,COMP_NAME,STATUS from dba_registry;
+
+    COMP_ID         COMP_NAME                                          STATUS
+    --------------- -------------------------------------------------- 
+    CATALOG         Oracle Database Catalog Views                      VALID
+    CATPROC         Oracle Database Packages and Types                 VALID
+
+
+
+
+# DB: rename
+
+    #In mounted state
+    
+nid target=/ dbname=dbclone
+orapwd file=$ORACLE_HOME/dbs/orapwdbclone password=oramanager   force=y;
+vi $ORACLE_HOME/dbs/initdbclone.ora
+
+    #OR
+    
+nid target= / dbname=KIEVPTST setname=YES
+
+    #OR
+    
+nid target=sys/oramanager dbname=lnp2vmBT
+
+
+
+
+# DB: view dbid
+
+select dbid from v$database;
+
+          DBID
+    ----------
+    1482665846
+
+
+
+
+# DB: size
+
+
+    #For example
+    
+SELECT round(SUM(bytes)/1024/1024/1024)  "Gb (round)"  FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log UNION ALL select sum(bytes) from v$standby_log);
+
+    Gb (round)
+    ----------
+           188
+
+
+    #With standby logs
+
+select instance_name from v$instance;
+SELECT SUM(bytes)/1024/1024  "DB size, Mb", round(SUM(bytes)/1024/1024)  "DB size, Mb (round)", round(SUM(bytes)/1024/1024 /1024, 1) "DB size, Gb (round)", round(SUM(bytes)/1024/1024/1024/1024, 1) "DB size, Tb (round)" FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log UNION ALL select sum(bytes) from v$standby_log);
+SELECT round(SUM(bytes)/1024/1024)  "DB size, Mb (round)"  FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log UNION ALL select sum(bytes) from v$standby_log);
+SELECT round(SUM(bytes)/1024/1024/1024)  "DB size, Gb (round)"  FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log UNION ALL select sum(bytes) from v$standby_log);
+    
+    INSTANCE_NAME
+    ----------------
+    bis1
+    
+    DB size, Mb DB size, Mb (round) DB size, Gb (round) DB size, Tb (round)
+    ----------- ------------------- ------------------- -------------------
+     7263942.87             7263943              7093.7                 6.9
+     
+    DB size, Mb (round)
+    -------------------
+                7263943
+                
+    DB size, Gb (round)
+    -------------------
+                   7094
+
+    
+    #Without standby logs
+    
+select instance_name from v$instance;
+SELECT SUM(bytes)/1024/1024  "DB size, Mb", round(SUM(bytes)/1024/1024,1)  "DB size, Mb (round)", round(SUM(bytes)/1024/1024 /1024, 1) "DB size, Gb (round)", round(SUM(bytes)/1024/1024/1024/1024, 1) "DB size, Tb (round)" FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log );
+SELECT round(SUM(bytes)/1024/1024,1)  "DB size, Mb (round)"  FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log );
+SELECT round(SUM(bytes)/1024/1024/1024,1)  "DB size, Gb (round)"  FROM (SELECT SUM(bytes) bytes FROM dba_data_files UNION ALL SELECT SUM(bytes) bytes FROM dba_temp_files UNION ALL SELECT SUM(bytes) bytes FROM v$log );
+    
+    INSTANCE_NAME
+    ----------------
+    KSBP10
+    
+    DB size, Mb DB size, Mb (round) DB size, Gb (round) DB size, Tb (round)
+    ----------- ------------------- ------------------- -------------------
+          29998               29998                29.3                   0
+    
+    DB size, Mb (round)
+    -------------------
+                  29998
+    
+    DB size, Gb (round)
+    -------------------
+                   29.3
+
+
+
+
+# DUMP: help impdp/expdp
+    
+    #Expdp/imdpd does not use the NLS_LANG for data conversion.
+
+impdp help=yes
+expdp help=yes
+
+
+
+
+# DUMP: overall expdp
+
+    #Preparation
+    
+mkdir /u01/dumpdir
+create user bars identified by passwd quota 40M on users;
+grant create session, create table to bars;
+create directory barsdir as '/u01/dumpdir';
+grant read, write on directory barsdir to bars;
+
+    #As the sys user...
+    
+expdp \'sys/ASd_2013@XPCDB_PRM as sysdba\' …
+    
+    OR
+    
+expdp sys/@EL02TEST directory=…
+    Username: sys as sysdba
+    Password:
+
+
+    #VIA COMMAND LINE
+    
+
+        #Export of the schema
+        
+expdp \'sys/a1tr9key@SPSTEST as sysdba\' DIRECTORY=my_docs DUMPFILE=cardwriter.dmp LOGFILE=cardwriter.log SCHEMAS=has_cardwriter;
+
+        #Export of the specified tables
+        
+expdp importer/importer directory=importerdir dumpfile=importer_tab6.dmp LOGFILE=cardwriter.log TABLES= importer.tab6, importer.tab4;
+
+        #Export of the specified procedures (tables...), another approach 
+            (for case-sensitivity cases)
+        
+Экспорт указанных процедур (таблиц, …) другим способом (для case-sensitivity случаев) (кажись, с параметром файлов этих ухищрений с синтаксисом не надо)
+expdp \'sys/sysaper@npi1 as sysdba\' directory=DATA_PUMP_DIR schemas=HAS_NP dumpfile=expdp_has_np_stis_pr_20140115.dmp logfile=expdp_has_np_stis_pr_20140115.log INCLUDE=PROCEDURE:\"IN\(\'CLEAR_SUBSCRIBER_LANGUAGE\',\'SET_SUBSCRIBER_LANGUAGE\',\'SET_SUBSCRIBER_LOADED\',\'SET_SUBSCRIBER_MIGRATED\'\)\";
+
+        #Export of the schema with compression
+        
+expdp importer/importer directory=importerdir dumpfile=importer_tables_compression.dmp TABLES= importer.tab1, importer.tab4 compression=all;
+
+        #Estimation of the export size (without any real export)
+            (doesn't see compression, so real export with compression should be smaller)
+            (!!! only this keys should be in use !!!)
+
+expdp importer/importer directory=importerdir TABLES= importer.tab1, importer.tab4 ESTIMATE_ONLY=y;
+
+        #Export of the schema except specified tables
+            #If you don't want this crazy syntax - do it with parameter file
+
+expdp \'sys/Zs73zerDFY#cG@SBL02CLN as sysdba\' DIRECTORY=DATA_EXP_TEMP DUMPFILE=test_export_exclude2.dmp SCHEMAS=SIEBEL COMPRESSION=all EXCLUDE=TABLE:\"IN \(\'S_DOCK_TXN_SET\', \'S_ESCL_REQ\'\)\";
+
+        #Export of the whole DB
+            (consistency is not guaranteed)
+            
+expdp \'sys/Hlekdh777Gfdre@CR80WORK as sysdba\' full=Y directory=DUMP_EXP dumpfile=cr80workdb.dmp logfile=cr80workdb.log compression=all;
+        
+        #Export of the whole DB
+            (consistency is guaranteed for the start time)
+
+expdp \'sys/Hlekdh777Gfdre@CR80WORK as sysdba\' full=Y directory=DUMP_EXP_DB dumpfile=cr80workdb.dmp logfile=cr80workdb.log compression=all consistent=y;
+
+        #Export of the schema except all tables
+        
+expdp \'sys/Zs73zerDFY#cG@SBL02CLN as sysdba\' DIRECTORY=DATA_EXP_TEMP DUMPFILE=test_export_exclude2.dmp SCHEMAS=SIEBEL COMPRESSION=all EXCLUDE=TABLE;
+
+
+    #VIA PARAMETER FILE
+        http://docs.oracle.com/cd/B28359_01/server.111/b28319/exp_imp.htm#CEGFIAGE
+
+        #Specific tables (for the start moment)
+        
+vi exp_param_tables_7a.txt
+directory=MIGRATE_EXP
+dumpfile=exp_tables_7a.dmp
+compression=all
+LOG=exp_tables_7a.log
+TABLES=SIEBEL.S_CALL_LST_CON, SIEBEL.ARCH_S_CAMP_CON
+FLASHBACK_TIME="to_timestamp(to_char(sysdate,'DD-MON-YY HH24:MI:SS'),'DD-MON-YY HH24:MI:SS')"
+expdp \'sys/Zs73zerDFY#cG@SBL02CLN as sysdba\' PARFILE=exp_param_tables_7a.txt;
+
+        #Specific tables (for the past moment)
+        
+FLASHBACK_TIME="to_timestamp(to_char(to_date('18.09.2012 08:00:00','DD.MM.YYYY HH24:MI:SS'),'DD-MON-YY HH24:MI:SS'),'DD-MON-YY HH24:MI:SS')"
+
+        #Specific schema except specific tables (for the start moment)
+
+vi test_export_exclude.txt
+DIRECTORY=DATA_EXP_TEMP
+DUMPFILE=test_export_exclude.dmp
+COMPRESSION=all
+LOG=test_export_exclude.log
+SCHEMAS=SIEBEL
+EXCLUDE=TABLE:"IN ('BIN$/tnLkcpwct/gQDEK5cUHpQ==$0', 'BIN$/tnLkdCQct/gQDEK5cUHpQ==$0' , 'BIN$/tnLkdB+ct/gQDEK5cUHpQ==$0' , 'S_DOCK_TXN_SET')"
+FLASHBACK_TIME="to_timestamp(to_char(sysdate,'DD-MON-YY HH24:MI:SS'),'DD-MON-YY HH24:MI:SS')"
+expdp \'sys/Zs73zerDFY#cG@SBL02CLN as sysdba\' PARFILE=test_export_exclude.txt;
+
+        #Specific schema except all tables (for the start moment)
+        
+vi test_export_exclude.txt
+DIRECTORY=DATA_EXP_TEMP
+DUMPFILE=test_export_exclude.dmp
+COMPRESSION=all
+LOG=test_export_exclude.log
+SCHEMAS=SIEBEL
+EXCLUDE=TABLE
+FLASHBACK_TIME="to_timestamp(to_char(sysdate,'DD-MON-YY HH24:MI:SS'),'DD-MON-YY HH24:MI:SS')"
+expdp \'sys/Zs73zerDFY#cG@SBL02CLN as sysdba\' PARFILE=test_export_exclude.txt;
+
+        #Only metadata
+        
+vi m2test_EDM_CONTENTITEM_metadata.txt
+DIRECTORY=migrate_exp
+DUMPFILE=m2test_EDM_CONTENTITEM_metadata.dmp
+LOG=m2test_EDM_CONTENTITEM_metadata.log
+TABLES=KYIVSTAR_SL.EDM_CONTENTITEM
+CONTENT=METADATA_ONLY
+expdp \'sys/"4ML3blE4yN8Us0J855ZS("@m2test as sysdba\' PARFILE=m2test_EDM_CONTENTITEM_metadata.txt;
+
+
+# INSTANCE: mapping (association) with the homes
+
+    #Which instances are installed on the server
+
+cat /var/opt/oracle/oratab
+
+    leisI2Od:/opt/vendor/oracle11g1/11.1:N
+    leisnp1pt:/opt/vendor/oracle11g2/product/11.2:N
+    leisnp1dev:/opt/vendor/oracle11g2/product/11.2:N
+
+
+
+
+# DUMP: stop expdb job
+
+    #Connect to the export job
+        (it's name is shown at the start of the export)
+    
+expdp \'sys/oramanager@FIAPT as sysdba\' attach=SYS_EXPORT_FULL_01;
+
+    #Kill job
+    
+kill_job  
+
+
+
+
+# DUMP: connect to the job
+    
+    #Connect to the export/import job
+        (it's name is shown at the start of the export/import)
+    
+expdp \'sys/oramanager@FIAPT as sysdba\' attach=SYS_EXPORT_FULL_01;
+
+impdp \'sys/oramanager@FIAPT as sysdba\' attach=SYS_IMPORT_SCHEMA_01;
+    
+    Job: SYS_IMPORT_SCHEMA_01
+      Owner: SYS
+      Operation: IMPORT
+      Creator Privs: TRUE
+      GUID: 4894BCFDA61D5DEAE0540003BAF29D2A
+      Start Time: Wednesday, 15 February, 2017 10:57:35
+      Mode: SCHEMA
+      Instance: fiapt
+      Max Parallelism: 1
+      EXPORT Job Parameters:
+         CLIENT_COMMAND        "sys/********@nhwkpt AS SYSDBA" FULL=y DIRECTORY=DB_SLICE DUMPFILE=nhwkpt_full_DB.dmp.20170215_0612 LOGFILE=nhwkpt_full_DB.log.20170215_0612 COMPRESSION=all flashback_time=TO_TIMESTAMP('2017-02-15 06:12:50', 'YYYY-MM-DD HH24:MI:SS') reuse_dumpfiles=true
+         COMPRESSION           ALL
+         FLASHBACK_TIME        17-FEB-15 06:12:50 AM
+      IMPORT Job Parameters:
+      Parameter Name      Parameter Value:
+         CLIENT_COMMAND        "sys/********@fiapt AS SYSDBA" schemas=region2 directory=DATADUMP dumpfile=nhwkpt_full_DB.dmp.20170215_0612
+      State: EXECUTING
+      Bytes Processed: 1,168,288,584
+      Percent Done: 37
+      Current Parallelism: 1
+      Job Error Count: 0
+      Dump File: /u03/oradata/backup/nhwkpt/nhwkpt_full_DB.dmp.20170215_0612
+    
+    Worker 1 Status:
+      Process Name: DW00
+      State: EXECUTING
+      Object Schema: REGION2
+      Object Name: CABLE_PAIR_ATTR_SET_IDX1
+      Object Type: DATABASE_EXPORT/SCHEMA/TABLE/INDEX/INDEX
+      Completed Objects: 44
+      Worker Parallelism: 1
+
+
+
+    
+# FILES: view list of all DB files
+
+set linesize 200 pagesize 25
+col data_file_name format A60 
+SELECT FILE_ID, file_name as data_file_name, bytes/(1024*1024) AS MB, autoextensible FROM dba_data_files order by FILE_ID;
+col temp_file_name format a70
+select FILE#, name as temp_file_name from v$tempfile;   
+col logfile_name format a60
+select GROUP#, TYPE,  member as logfile_name from v$logfile order by GROUP#;
+col controlfile_name format a60
+select name as controlfile_name from v$controlfile;
+
+
+
+
+# OBJECT: find
+
+    #"like" predicate
+    
+DEFINE object='uba_audit'
+set linesize 200
+set pagesize 50
+col owner for a19
+col object_name for a34
+col object_type for a17
+select owner, object_name, object_type, created, last_ddl_time, timestamp, status from dba_objects where object_name like upper('%&object%') order by object_name, object_type;
+
+    OWNER           OBJECT_NAME                    OBJECT_TYPE     CREATED    LAST_DDL_T STATUS
+    --------------- ------------------------------ --------------- ---------- ---------- 
+    SELFCARE        MLOG$_SC_RATE_PLAN             TABLE           08.01.2009 09.06.2010 VALID
+
+
+    #equals predicate
+    
+DEFINE object='vlrGetSvcIntData_By_Name'
+set linesize 200
+col owner for a15
+col object_name for a25
+col object_type for a20
+select owner, object_name, object_type, created, last_ddl_time, timestamp, status from dba_objects where object_name like upper('&object');
+
+
+
+
+# OBJECT: view the whole list of schema's objects
+
+set linesize 180 pagesize 5000
+col OBJECT_TYPE for a20
+col OBJECT_NAME for a50
+DEFINE owner_name='region2'
+select OBJECT_TYPE, OBJECT_NAME  from dba_objects where owner=upper('&owner_name') order by OBJECT_TYPE, OBJECT_NAME;
+
+    OBJECT_TYPE          SCHEMA_OVERALL_OBJ_CNT                                                                                                          
+    -------------------- ------------------------------------------------
+    FUNCTION             AUTHORIZE_USER                                         
+    FUNCTION             BYPASS_VLR        
+
+
+
+
+# OBJECT: view invalid
+
+    #Order by OBJECT_TYPE
+    
+set linesize 180 pagesize 999
+col OWNER format a30
+col OBJECT_NAME format a50
+col OBJECT_TYPE format a40
+select OBJECT_TYPE, OBJECT_NAME, OWNER from dba_objects where STATUS='INVALID' order by OBJECT_TYPE;
+
+    OBJECT_TYPE                              OBJECT_NAME                                        OWNER
+    ---------------------------------------- 
+    FUNCTION                                 ENCRYPTBYTES                                       SYSMAN
+
+    #Order by owner
+    
+set linesize 180 pagesize 999
+col OWNER format a30
+col OBJECT_NAME format a50
+col OBJECT_TYPE format a40
+select OWNER,OBJECT_NAME,OBJECT_TYPE from dba_objects where STATUS='INVALID' order by owner;
+
+
+
+
+# OBJECT: try to recompile invalid
+
+    #Manually
+    
+ALTER PACKAGE my_package COMPILE;
+ALTER PACKAGE my_package COMPILE BODY;
+ALTER PROCEDURE my_procedure COMPILE;
+ALTER FUNCTION my_function COMPILE;
+ALTER TRIGGER my_trigger COMPILE;
+ALTER VIEW my_view COMPILE;
+
+    #All schema objects
+    
+EXEC DBMS_UTILITY.compile_schema(schema => 'DOCUM');
+
+    #With help of system scripts
+    
+cd $ORACLE_HOME/rdbms/admin
+sqlplus "/ as sysdba"
+@utlrp.sql
+
+
+
+
+# ORACLE_BASE: find if unknown
+
+    #If ORACLE_HOME is specified
+    
+orabase
+
+    /opt/vendor/oracle
+
+
+
+
+# PARAM: view hidden parameters that already in use for current DB instance
+
+set linesize 180 pagesize 50
+col name for a54
+col description for a80
+col value for a25
+SELECT name, value, description from SYS.V$PARAMETER WHERE name LIKE '\_%' ESCAPE '\';
+
+    NAME                                VALUE      DESCRIPTION
+    ----------------------------------- ---------- --------------------------------------
+    _b_tree_bitmap_plans                FALSE      enable the use of bitmap plans for                                                table s w. only B-tree indexes
+
+
+
+
+# PARAM: view hidden parameters available for this DB instance
+
+    #Specific hidden parameter
+
+DEFINE hid_param="_b_tree_bitmap_plans"
+set linesize 180 pagesize 9999
+col ksppinm for a54
+col ksppdesc for a125
+select ksppinm, ksppdesc from x$ksppi where substr(ksppinm,1,1) = '_' and ksppinm='&hid_param' order by 1,2;
+
+    KSPPINM               KSPPDESC
+    --------------------  --------------------------------------------------------------- 
+    _b_tree_bitmap_plans  enable the use of bitmap plans for tables w. only B-tree indexes
+
+
+    #All hidden parameters
+    
+set linesize 180 pagesize 9999
+col ksppinm for a54
+col ksppdesc for a125
+select ksppinm, ksppdesc from x$ksppi where substr(ksppinm,1,1) = '_' order by 1,2;
+
+    KSPPINM                       KSPPDESC
+    ------------------------      ------------------------------ 
+    _4030_dump_bitvec             bitvec to specify dumps prior to 4030 error
+    _4031_dump_bitvec             bitvec to specify dumps prior to 4031 error
+    _4031_dump_interval           Dump 4031 error once for each n-second interval
+    
+
+
+
+# PARAM: what parameters are depricated in from current DB release
+
+    #Depricated parameters still available, but might be removed for next releases
+    
+    #Whole list of depricated parameters
+    
+set linesize 180 pagesize 100
+SELECT name from v$parameter WHERE isdeprecated = 'TRUE' ORDER BY name;
+
+    NAME
+    -------------------------------------------------------
+    active_instance_count
+    background_dump_dest
+ 
+ 
+    #Is specific parameter depricated for current release (NO if output is NULL)
+
+DEFINE db_par="remote_os_authent"  
+set linesize 180 pagesize 100
+SELECT name from v$parameter WHERE isdeprecated = 'TRUE' and name='&db_par' ORDER BY name;
+        
+         
+         
+
+# PARAM: unset param
+
+    #Can be done only for spfile, not for memory
+
+alter system reset "_b_tree_bitmap_plans" scope=memory;
+
+
+
+
+# PASSWORD: remote access
+
+orapwd file=$ORACLE_HOME/dbs/orapwbistest1 password="R_Bv_dtd6awbd33"   force=y;
+
+
+
+
+# PATCH: view installed
+
+
+    #Report the name and installation dir for each $ORACLE_HOME found
+    
+$ORACLE_HOME/OPatch/opatch lsinventory -all
+
+
+    #Via query
+    
+set linesize 190 pagesize 50
+col time_of_action format a21
+col action format a20
+col namespace format a15
+col version format a10
+col comments format a40
+col bundle_series format a20
+select to_char(action_time, 'dd-mm-yyyy hh24:mi:ss') time_of_action, action, namespace, version, id, comments, bundle_series  from registry$history order by time_of_action;
+
+    TIME_OF_ACTION        ACTION               NAMESPACE       VERSION            ID COMMENTS                                 BUNDLE_SERIES
+    --------------------- -------------------- --------------- ---------- ---------- 
+    26-03-2013 18:07:30   APPLY                SERVER          11.2.0.2            0 Patchset 11.2.0.2.0                      PSU
+    29-01-2015 07:35:45   VIEW INVALIDATE                                    8289601 view invalidation
+    29-01-2015 07:35:47   UPGRADE              SERVER          11.2.0.3.0            Upgraded from 11.2.0.2.0
+    29-01-2015 07:37:20   APPLY                SERVER          11.2.0.3            0 Patchset 11.2.0.2.0                      PSU
+
+
+
+    
+# PATCH: available PSU/CPU/base_release
+
+    #Base release
+    
+        Links to Download Oracle Database Patchset (Doc ID 2161500.1)
+
+    #Patches
+    
+        Quick Reference to Patch Numbers for Database PSU, SPU(CPU), Bundle Patches and Patchsets (Doc ID 1454618.1)
+        
+        Oracle Recommended Patches -- Oracle Database (Doc ID 756671.1)
+
+
+
+
+# REDOLOG: list
+
+
+    #List redologs
+    
+set linesize 160 pagesize 25
+col logfile_name format a60
+select GROUP#, TYPE,  member as logfile_name from v$logfile order by GROUP#;
+    
+        GROUP# TYPE    LOGFILE_NAME
+    ---------- ------- ------------------------------------------------------------
+             1 ONLINE  /u01/oradata/fiamut/redo01.log
+             2 ONLINE  /u01/oradata/fiamut/redo02.log
+             3 ONLINE  /u01/oradata/fiamut/redo03.log    
+
+
+    #List redologs in another way
+    
+select GROUP#, MEMBERS, STATUS, bytes/1024/1024 as MB from v$log order by GROUP#;    
+
+        GROUP#    MEMBERS STATUS                   MB
+    ---------- ---------- ---------------- ----------
+             4          1 INACTIVE                500
+             5          1 INACTIVE                500
+             6          1 CURRENT                 500
+
+
+
+# SIZE: table (not actual)
+
+
+
+
+# SIZE: table (actual)
+
+https://asktom.oracle.com/pls/asktom/f?p=100:11:0::::P11_QUESTION_ID:266215435203
+https://asktom.oracle.com/pls/asktom/f?p=100:11:::::P11_QUESTION_ID:231414051079
+
+
+
+
+# SIZE: index
+
+    #Size of the specific index
+
+DEFINE INDX_NAME='UDC_ATTRIBUTE_PK'
+set linesize 180 pagesize 500
+col owner for a16
+col index_name for a40
+select * from (select owner, segment_name index_name, bytes/1024/1024 Mb, round(bytes/1024/1024/1024, 2) Gb from dba_segments where segment_type = 'INDEX' order by bytes/1024/1024 desc) where index_name='&INDX_NAME';
+
+    OWNER            INDEX_NAME                                       MB         GB
+    ---------------- ---------------------------------------- ---------- ----------
+    REGION1          UDC_ATTRIBUTE_PK                               2426       2.37
+    REGION2          UDC_ATTRIBUTE_PK                               2418       2.36
+    REGION3          UDC_ATTRIBUTE_PK                                392        .38
+    
+    3 rows selected.
+    
+    
+    #Top 10 of the biggest indexes in the DB
+    
+set linesize 180 pagesize 500
+col owner for a16
+col index_name for a40
+select * from (select owner, segment_name index_name, bytes/1024/1024 Mb, round(bytes/1024/1024/1024, 2) Gb from dba_segments where segment_type = 'INDEX' order by bytes/1024/1024 desc) where rownum <= 10;
+
+    OWNER            INDEX_NAME                                       MB         GB
+    ---------------- ---------------------------------------- ---------- ----------
+    REGION1          CABLE_PAIR_ATTR_SET_IDX4                       4105       4.01
+    REGION2          CABLE_PAIR_ATTR_SET_IDX4                       4096          4
+
+
+
+
+# STATISTIC: view all-time gathered for specific table
+
+DEFINE ownername='REGION2'
+DEFINE tablename='VLR_EQUIP_LFACSTERMINALAT_UDAS'
+set linesize 200 pagesize 900
+col was_updated for a22
+col table_name for a30
+col partition_name for a20
+col subpartition_name for a20
+select table_name, partition_name, subpartition_name, to_char(stats_update_time, 'dd-mm-yyyy hh24:mi:ss') was_updated from DBA_TAB_STATS_HISTORY where table_name = '&tablename' and owner = '&ownername' order by stats_update_time asc;
+
+    TABLE_NAME                     PARTITION_NAME       SUBPARTITION_NAME    WAS_UPDATED           
+    ------------------------------ -------------------- -------------------- 
+    VLR_EQUIP_LFACSTERMINALAT_UDAS                              14-02-2017 06:42:02   
+
+
+
+
+# STATISTIC: gather
+
+    #Gathering statistics for an individual table (не забыть собрать статистику и на все её индексы)
+    
+exec dbms_stats.gather_table_stats(  -
+       ownname => 'test', -
+       tabname => 'testt', -
+       estimate_percent => DBMS_STATS.AUTO_SAMPLE_SIZE,  -
+       cascade => TRUE,  -
+       method_opt => 'FOR ALL COLUMNS SIZE AUTO' );
+
+
+    #Gathering statistics on all associated indexes ??
+    
+exec dbms_stats.gather_index_stats(null, 'IDX_PCTREE_PARENTID', null, DBMS_STATS.AUTO_SAMPLE_SIZE);
+
+
+    #Gathering statistic for specific index 
+    
+exec dbms_stats.gather_index_stats(  -
+       ownname => 'ODF_TOOL', -
+       indname => 'pk_odt_intf_point', -
+       estimate_percent => DBMS_STATS.AUTO_SAMPLE_SIZE);
+
+
+    #Gathering statistics for all objects in a schema
+    
+exec dbms_stats.gather_schema_stats( -
+ ownname => 'Schema_name', -
+cascade => TRUE, -
+method_opt => 'FOR ALL COLUMNS SIZE AUTO' );
+
+
+    #Gathering statistics for all objects in the database
+    
+exec dbms_stats.gather_database_stats( -
+cascade => TRUE, -
+method_opt => 'FOR ALL COLUMNS SIZE AUTO' );
+
+
+    #Gathering statistic for fixed objects
+        http://dba-tips.blogspot.com/2012/03/gathering-fixed-objects-statistics.html
+
+exec dbms_stats.gather_fixed_objects_stats('ALL'); 
+--
+exec dbms_stats.gather_fixed_objects_stats;
+
+
+
+
+# SQLPLUS: view only plan, but not output
+
+set autot traceonly;
+select * from dictionary;
+
+    ...
+    Statistics
+    ----------------------------------------------------------
+              8  recursive calls
+              0  db block gets
+           3771  consistent gets
+              0  physical reads
+              0  redo size
+         187386  bytes sent via SQL*Net to client
+           2438  bytes received via SQL*Net from client
+            176  SQL*Net roundtrips to/from client
+              1  sorts (memory)
+              0  sorts (disk)
+           2617  rows processed
+
+
+
+
+# TEMPFILE: list
+
+set linesize 160 pagesize 25
+col temp_file_name format a70
+select FILE#, name as temp_file_name from v$tempfile;
+    
+         FILE# TEMP_FILE_NAME
+    ---------- ----------------------------------------------------------------------
+             1 /u01/oradata/fiamut/temp01.dbf
+
+
+
+
+# TRIGGER: view
+
+    #All triggers, without body
+
+set linesize 180 pagesize 9999
+col owner for a25
+col trigger_name for a30
+col trigger_type for a17
+col triggering_event for a35
+col status for a10
+select owner, trigger_name, trigger_type, triggering_event, status from all_triggers
+order by trigger_name;
+
+    OWNER                     TRIGGER_NAME                   TRIGGER_TYPE      TRIGGERING_EVENT                    STATUS
+    ------------------------- ------------------------------ ----------------- 
+    PLUTIL                    ACTIVITY_ID_TRG                BEFORE EACH ROW   INSERT                              ENABLED
+    REGION3                   AFT_DELETE_RESERVATION_INST    AFTER EACH ROW    DELETE                              ENABLED
+    
+
+    #All triggers, with body
+    
+set linesize 180 pagesize 50
+col owner for a15
+col TRIGGER_NAME for a30
+col TRIGGER_TYPE for a17
+col TRIGGERING_EVENT for a20
+col TRIGGER_BODY for a45
+select owner, trigger_name, trigger_type, TRIGGERING_EVENT, trigger_body from all_triggers
+order by trigger_name;
+
+    OWNER           TRIGGER_NAME                   TRIGGER_TYPE      TRIGGERING_EVENT     TRIGGER_BODY
+    --------------- ------------------------------ ----------------- -------------------- 
+    INSTALL         AFT_INS_SITE_DOMAIN_TRIG       AFTER EACH ROW    INSERT               DECLARE
+                                                                                                parent_ver  site_inst.inst_ver%type;
+                                                                                                dm_name     domain_inst
+
+
+
+
+# TRIGGER: enable/disable
+
+    #Specified trigger
+    
+        #Enable
+        ALTER TRIGGER reorder ENABLE;
+    
+        #Disable
+        ALTER TRIGGER reorder DISABLE;
+    
+    #All triggers of specified table
+    
+        #Enable
+        ALTER TABLE inventory ENABLE ALL TRIGGERS;
+    
+        #Disable
+        ALTER TABLE inventory DISABLE ALL TRIGGERS;
+
+
+    
+
+# TBS: size, free space
+
+    #Order by name
+    
+set pagesize 25
+SELECT a.tablespace_name, "Total, B"/1024/1024 "Total, MB", "Free, B"/1024/1024 "Free, MB", ROUND(100*("Free, B"/"Total, B"),2) "Free, %" FROM (SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_data_files GROUP BY tablespace_name UNION SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_temp_files GROUP BY tablespace_name) a, (SELECT tablespace_name, SUM(bytes)AS "Free, B" FROM dba_free_space GROUP BY tablespace_name) b WHERE a.tablespace_name = b.tablespace_name (+) ORDER BY a.tablespace_name;
+
+    TABLESPACE_NAME                 Total, MB   Free, MB    Free, %
+    ------------------------------ ---------- ---------- ----------
+    LEIS_DATA                           12288  10354.375      84.26
+    LEIS_INDX                            7168       7166      99.97
+
+    
+    #Order by % of free space (asc)
+    
+set pagesize 25
+SELECT a.tablespace_name, "Total, B"/1024/1024 "Total, MB", "Free, B"/1024/1024 "Free, MB", ROUND(100*("Free, B"/"Total, B"),2) "Free, %" FROM (SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_data_files GROUP BY tablespace_name UNION SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_temp_files GROUP BY tablespace_name) a, (SELECT tablespace_name, SUM(bytes)AS "Free, B" FROM dba_free_space GROUP BY tablespace_name) b WHERE a.tablespace_name = b.tablespace_name (+) ORDER BY 4;
+
+    TABLESPACE_NAME                 Total, MB   Free, MB    Free, %
+    ------------------------------ ---------- ---------- ----------
+    SYSTEM                                740   101.6875      13.74
+    SYSAUX                                600   298.8125       49.8
+    USERS                                   5      3.625       72.5
+
+
+    #Order by size (desc)
+    
+set pagesize 25
+SELECT a.tablespace_name, "Total, B"/1024/1024 "Total, MB", "Free, B"/1024/1024 "Free, MB", ROUND(100*("Free, B"/"Total, B"),2) "Free, %" FROM (SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_data_files GROUP BY tablespace_name UNION SELECT tablespace_name, SUM(bytes) AS "Total, B" FROM dba_temp_files GROUP BY tablespace_name) a, (SELECT tablespace_name, SUM(bytes)AS "Free, B" FROM dba_free_space GROUP BY tablespace_name) b WHERE a.tablespace_name = b.tablespace_name (+) ORDER BY 2 desc;
+
+    TABLESPACE_NAME                 Total, MB   Free, MB    Free, %
+    ------------------------------ ---------- ---------- ----------
+    LEIS_DATA                           22528  20593.375      91.41
+    LEIS_INDX                            7168       7166      99.97
+    TEMP                                 2048                      
+
+
+
+
+# TBS: files
+
+    #All TBSs
+    
+set linesize 200 pagesize 25
+col file_name format A60 
+SELECT tablespace_name, file_name, bytes/(1024*1024) AS MB, autoextensible FROM dba_data_files UNION ALL SELECT tablespace_name, file_name, bytes/(1024*1024) AS MB, autoextensible FROM dba_temp_files order by 1;
+
+       FILE_ID TABLESPACE_NAME  FILE_NAME      MB    AUTOEXTENSIBLE
+    ---------- ---------------- ------       -----   ---
+             1 SYSTEM   /u01/oradata/nhwkdev/system01.dbf   740 YES           
+             2 SYSAUX   /u01/oradata/nhwkdev/sysaux01.dbf   600 YES           
+   
+   
+   #Particular TBS      
+
+define TBS_NAME='LEIS_INDX'
+set linesize 200 pagesize 25
+col file_name format A60 
+SELECT FILE_ID,  tablespace_name, file_name, bytes/(1024*1024) AS MB, autoextensible FROM dba_data_files where tablespace_name ='&TBS_NAME' order by 1;
+
+   FILE_ID TABLESPACE_NAME                FILE_NAME           MB AUTOEXTENSIBLE
+---------- ---------------               ---------------     --- --------------
+         5 LEIS_INDX   /u03/oradata/nhwkdev/leis_indx01.dbf   2048 NO            
+         8 LEIS_INDX   /u03/oradata/nhwkdev/leis_indx02.dbf   5120 NO            
+         
+
+
+
+# USER: overall info
+    
+set linesize 150 pagesize 100
+col account_status format a18
+col profile format a18
+col USERNAME format a22
+col lock_date format a20
+col expire_date format a20
+col default_tbs format a12
+col DEFAULT_TABLESPACE for a20
+select USERNAME,  DEFAULT_TABLESPACE  as default_tbs , ACCOUNT_STATUS, created, to_char(lock_date, 'dd-mm-yyyy hh24:mi:ss') as lock_date, to_char(expiry_date, 'dd-mm-yyyy hh24:mi:ss') as expire_date, profile from dba_users order by 1;
+
+    USERNAME               DEFAULT_TBS  ACCOUNT_STATUS     CREATED   LOCK_DATE            EXPIRE_DATE          PROFILE
+    ---------------------- ------------ ------------------ --------- -------------------- 
+    ANONYMOUS              SYSAUX       EXPIRED & LOCKED   09-OCT-15 09-10-2015 17:37:43  09-10-2015 17:37:43  DEFAULT
+    APPQOSSYS              SYSAUX       EXPIRED & LOCKED   09-OCT-15 09-10-2015 16:08:00  09-10-2015 16:08:00  DEFAULT
+
+
+
+
+# XMLDB: is installed?   
+
+    #This output in case of installed XMLDB
+    
+SELECT username FROM DBA_USERS where username = 'XDB';
+
+    USERNAME
+    --------------------------------------------------------------------------------
+    XDB
+
+DESCRIBE RESOURCE_VIEW;
+
+     Name                                      Null?    Type
+     ----------------------------------------- -------- ----------------------------
+     RES                                                XMLTYPE(XMLSchema "http://xm
+                                                        lns.oracle.com/xdb/XDBResour
+                                                        ce.xsd" Element "Resource")
+     ANY_PATH                                           VARCHAR2(4000)
+     RESID                                              RAW(16)
+
+
+    
+    
+    
+    
+    
+    
+    
+                ######## BU & RESTORE ########
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+# BU: register backups from the new location at CF
+
+    #Registration is done at control file (so DB should be mounted)
+
+rman target /    
+catalog start with '$BU_DEST_LOCAL';
+
+    searching for all files that match the pattern $BU_DEST_LOCAL
+    
+    List of Files Unknown to the Database
+    =====================================
+    File Name: /u03/oradata/backup/LNP1VMTR_A_20161218_0ernpn5b_s14_p1
+    ...
+    
+    Do you really want to catalog the above files (enter YES or NO)? yes
+    cataloging files...
+    cataloging done
+    
+    List of Cataloged Files
+    =======================
+    File Name: /u03/oradata/backup/LNP1VMTR_A_20161218_01rnpmtt_s1_p1
+    ...
+
+
+
+
+# BU: view backup list known to CF
+
+    #Doesn't do real restore - just preview
+    
+rman target /
+RESTORE DATABASE PREVIEW;
+
+
+
+
+# BU: list bu of archive logs
+
+    #Based on info from CF
+    
+LIST BACKUP OF ARCHIVELOG ALL;
+
+    List of Backup Sets
+    ===================
+
+    BS Key  Size       Device Type Elapsed Time Completion Time
+    ------- ---------- ----------- ------------ ---------------
+    8       47.50K     DISK        00:00:00     18-DEC-16
+            BP Key: 9   Status: AVAILABLE  Compressed: NO  Tag: TAG20161218T153714
+            Piece Name: /u03/oradata/backup/lnp1vmtr/rman/161218/bu/LNP1VMTR_A_20161218_0ernpn5b_s14_p1
+    
+      List of Archived Logs in backup set 8
+      Thrd Seq     Low SCN    Low Time  Next SCN   Next Time
+      ---- ------- ---------- --------- ---------- ---------
+      1    1031    85013638   18-DEC-16 85013773   18-DEC-16
+    ...    
+
+
+
+
+# LIST: in which bu necessary archlog
+
+list backup of archivelog sequence 1 thread 1;
+
+    BS Key  Size       Device Type Elapsed Time Completion Time
+    ------- ---------- ----------- ------------ ---------------
+    8       47.50K     DISK        00:00:00     18-DEC-16
+            BP Key: 9   Status: AVAILABLE  Compressed: NO  Tag: TAG20161218T153714
+            Piece Name: /u03/oradata/backup/lnp1vmtr/rman/161218/bu/LNP1VMTR_A_20161218_0ernpn5b_s14_p1
+    
+      List of Archived Logs in backup set 8
+      Thrd Seq     Low SCN    Low Time  Next SCN   Next Time
+      ---- ------- ---------- --------- ---------- ---------
+      1    1031    85013638   18-DEC-16 85013773   18-DEC-16    
+
+
+
+
+# LIST: view bu, where archlogs for necessary period
+
+list backup of archivelog all completed after 'sysdate - 40';
+
+
+
+
+# LISTENER: register service
+
+    #Dynamic
+    
+alter system register;
+
+
+    #Static
+    
+vi $ORACLE_HOME/network/admin/listener.ora
+
+SID_LIST_LISTENER =
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = transit) -- это генерирует сервис (можно и без него)
+      (ORACLE_HOME = /u01/app/oracle/product/11.2.0)
+      (SID_NAME = transit)
+    )
+  )
+
+lsnrctl stop
+lsnrctl start
+
+
+    #Another approach
+    
+Верняк (из целевой БД)
+alter system set local_listener='(ADDRESS = (PROTOCOL=TCP)(HOST = 10.44.1.84)(PORT=1521))';
+
+
+
+
+# RESTORE: conditions
+
+SET NEWNAME FOR DATAFILE 1 TO '/u02/oradata/lnp1vmtr/system01.dbf';
+    ...
+SET NEWNAME FOR TEMPFILE 1 TO '/u02/oradata/lnp1vmtr/temp01.dbf';
+    ...
+SQL "ALTER DATABASE RENAME FILE ''/u01/redo01.log'' TO ''/u03/redo01.log'' ";
+    ...
+SET UNTIL SEQUENCE 1032;
+    ...
+SET UNTIL SCN 85013704;
+
+
+
+
+# RESTORE: archive logs
+
+rman target /
+run
+{
+SET ARCHIVELOG DESTINATION TO '/u03/oradata/backup/lnp1vmtr/rman/161218/to_del';
+RESTORE ARCHIVELOG FROM SEQUENCE 1030 UNTIL SEQUENCE 1031;
+}    
+    
+    
+    
+
+# RESTORE: DF    
+    
+rman target /
+run
+{
+SET NEWNAME FOR DATAFILE 11 TO '/u03/oradata/lnp1vmtr/leis_indx04.dbf';
+RESTORE DATAFILE 11;
+SWITCH DATAFILE ALL;
+}
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
