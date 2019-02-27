@@ -4,11 +4,25 @@
 
 **COMAND LINE**
 
+Make a connection
 ```
+    # export PGPASSWORD=<PWD>
     # psql -h <host_name> -p <port_name> -d <db_name> -U postgres_user
 
+export PGPASSWORD=pwdpwd
 psql -h postgres.infra.internal -p 5432 -d auditing -U postgres_user
 ```
+
+Make a connection and apply a sql-file
+```
+psql -h postgres.infra.internal -p 5432 -d auditing -U postgres_user -f work.sql
+
+    OR
+
+psql -h postgres.infra.internal -p 5432 -d auditing -U postgres_user
+\i work.sql
+```
+
 
 ## HELP
 
@@ -22,15 +36,16 @@ List available commands
 
 **List**
 
-List databases
+List all databases
 ```
 \l
 
-          Name           |     Owner     | Encoding |   Collate   |    Ctype    |        Access privileges        
--------------------------+---------------+----------+-------------+-------------+---------------------------------
- auditing                | postgres_user | UTF8     | en_US.UTF-8 | en_US.UTF-8 | 
- auth_service            | postgres_user | UTF8     | en_US.UTF-8 | en_US.UTF-8 | 
+    OR
+
+SELECT datname 
+FROM pg_database; 
 ```
+
 
 Show current DB
 ```
@@ -61,6 +76,14 @@ CREATE DATABASE databasename;
 Show size of all DBs.
 ```
 SELECT pg_database.datname as "database_name", pg_database_size(pg_database.datname)/1024/1024 AS size_in_mb FROM pg_database ORDER by size_in_mb DESC;
+```
+
+Sho size of specific DB
+```
+SELECT
+    pg_size_pretty (
+        pg_database_size ('dvdrental')
+    );
 ```
 
 ## TABLE
@@ -129,6 +152,9 @@ select
 from generate_series(1, 10) s(i);
 ```
 
+**Size**
+
+http://www.postgresqltutorial.com/postgresql-database-indexes-table-size/
 
 
 ## USERS
@@ -146,4 +172,60 @@ CREATE ROLE username WITH LOGIN PASSWORD 'quoted password' [OPTIONS]
 Grant permission to user
 ```
 GRANT ALL PRIVILEGES ON DATABASE super_awesome_application TO patrick;
+```
+
+## SESSIONS
+
+**List**
+
+List all sessions in the specific DB
+```
+select *
+from pg_stat_activity
+where datname = 'xbsdbname1';
+```
+
+List only active sessions in the specific DB
+```
+SELECT *
+FROM pg_stat_activity
+WHERE state = 'active'
+AND datname = 'xbsdbname1';
+```
+
+List all sessions in the specific DB except you own one
+```
+SELECT *
+FROM pg_stat_activity
+WHERE datname = 'xbsdbname1' 
+AND pid <> pg_backend_pid();
+```
+
+**Terminate**
+
+Terminate all sessions in the specific DB except your own one
+```
+SELECT pg_terminate_backend(pg_stat_activity.pid) 
+FROM pg_stat_activity 
+WHERE pg_stat_activity.datname = 'xbsdbname1' 
+AND pid <> pg_backend_pid();
+```
+
+Terminate only idle sessions in the specific DB except your own one
+```
+SELECT pg_terminate_backend(pg_stat_activity.pid) 
+FROM pg_stat_activity 
+WHERE pg_stat_activity.datname = 'xbsdbname1' 
+AND pid <> pg_backend_pid()
+AND state = 'idle';
+```
+
+## VARIABLES
+
+Use env variable in the sql-query (command line only)
+```
+\set currdb `echo "$CURR_DB"`
+SELECT datname 
+FROM pg_database
+where datname = :'currdb';
 ```
