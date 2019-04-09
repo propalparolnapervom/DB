@@ -23,6 +23,11 @@ psql -h postgres.infra.internal -p 5432 -d auditing -U postgres_user
 \i work.sql
 ```
 
+Make a connection and run a command
+```
+psql -U username -d database.db -c "SELECT * FROM some_table"
+```
+
 
 ## HELP
 
