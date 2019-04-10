@@ -167,6 +167,10 @@ http://www.postgresqltutorial.com/postgresql-database-indexes-table-size/
 List users
 ```
 \du
+
+   OR
+   
+SELECT *  FROM pg_catalog.pg_user;
 ```
 
 Create new user
