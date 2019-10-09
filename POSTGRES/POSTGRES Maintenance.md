@@ -252,3 +252,34 @@ SELECT datname
 FROM pg_database
 where datname = :'currdb';
 ```
+
+## PRIVILEGES
+
+List DB privileges
+```
+\l
+
+      Name       |     Owner     | Encoding |   Collate   |    Ctype    |                     Access privileges                      
+------------------+---------------+----------+-------------+-------------+------------------------------------------------------------
+ grafana_dev_eks  | postgres_user | UTF8     | en_US.UTF-8 | en_US.UTF-8 | =Tc/postgres_user                                         +
+                  |               |          |             |             | postgres_user=CTc/postgres_user                           +
+                  |               |          |             |             | data_science_crew_assignment_config_user=CTc/postgres_user+
+                  |               |          |             |             | todel=c/postgres_user
+
+```
+
+List users and their privileges for a database
+```
+\du
+
+                             List of roles
+    Role name    |  Attributes  |                    Member of
+-----------------+--------------+------------------------------------------------
+ dba             | Create role  | {util_user,helpdesk_user,helpdesk_admin}
+ helpdesk_admin  | Cannot login | {helpdesk_user}
+```
+
+List specific privileges on the table
+```
+\z <table_name>
+```
