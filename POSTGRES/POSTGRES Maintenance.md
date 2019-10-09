@@ -253,7 +253,7 @@ FROM pg_database
 where datname = :'currdb';
 ```
 
-## PRIVILEGES
+## PRIVILEGES: LIST
 
 Privileges list [explained](https://www.postgresql.org/docs/9.3/sql-grant.html).
 ```
@@ -307,3 +307,29 @@ List specific privileges on the table
 \z <table_name>
 \dp <table_name>
 ```
+
+## PRIVILEGES: GRANT
+
+Add all privileges on DB ('CREATE', 'CONNECT', 'TEMPORARY'. No privileges on tables)
+```
+GRANT ALL PRIVILEGES ON DATABASE <db_name> TO <user_name>;
+```
+
+Grant all privileges on *existing* tables and sequences (indexes, etc)
+```
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO <user_name>;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO <user_name>;
+```
+
+Grant all privileges on *new* tables and sequences (indexes, etc)
+```
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON tables TO <user_name>;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, USAGE ON sequences TO <user_name>;
+```
+
+
+
+
