@@ -109,7 +109,7 @@ SELECT
 
 **List**
 
-List user tables in current DB (via command)
+List tables in current schema ('public' by default) (via command)
 
 ```
 \dt
@@ -120,6 +120,17 @@ List user tables in current DB (via command)
     public | BootstrapMeta_auditing_domain_service | table | postgres_user
     public | insp_template_item_references         | table | postgres_user
 ```
+
+List tables in all schemas (via command)
+```
+\dt *.*
+```
+
+List tables in particular schema ('public', for example) (via command)
+```
+\dt public.*
+```
+
 
 List user tables in current DB (via query)
 
