@@ -342,5 +342,19 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 ```
 
 
+## SCHEMA
+
+Which users have been granted privileges on the various schema
+```
+\dn+
+
+                                        List of schemas
+        Name    |     Owner     |       Access privileges        |       Description       
+    ------------+---------------+--------------------------------+-------------------------
+    public     | postgres_user | postgres_user=UC/postgres_user+| standard public schema
+                |               | =UC/postgres_user              | 
+    tiger      | rdsadmin      |                                | 
+
+```
 
 
