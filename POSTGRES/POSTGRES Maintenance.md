@@ -185,6 +185,98 @@ from generate_series(1, 10) s(i);
 **Size**
 
 http://www.postgresqltutorial.com/postgresql-database-indexes-table-size/
+https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADMIN-DBSIZE
+
+Show table size (no indexes)
+```
+SELECT
+    pg_size_pretty (
+        pg_table_size ('spm_data')
+    );
+```
+
+Show table + indexes size
+```
+SELECT
+    pg_size_pretty (
+        pg_total_relation_size ('spm_data')
+    );
+```
+
+
+List 10 biggest tables (table+index)
+```
+    # table_schema - table's schema name
+    # table_name - table name
+    # total_size - Total disk space used by the specified table, including all indexes and TOAST data
+    # data_size - Disk space used by specified table or index
+    # external_size - Disk space used by realted object to specified table
+
+select schemaname as table_schema,
+    relname as table_name,
+    pg_size_pretty(pg_total_relation_size(relid)) as total_size,
+    pg_size_pretty(pg_relation_size(relid)) as data_size,
+    pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid))
+      as external_size
+from pg_catalog.pg_statio_user_tables
+order by pg_total_relation_size(relid) desc,
+         pg_relation_size(relid) desc
+limit 10;
+```
+More about table size counting
+```
+select pg_relation_size(20306, 'main') as main,
+  pg_relation_size(20306, 'fsm') as fsm,
+  pg_relation_size(20306, 'vm') as vm,
+  pg_relation_size(20306, 'init') as init,
+  pg_table_size(20306), pg_indexes_size(20306) as indexes,
+  pg_total_relation_size(20306) as total;
+  main  |  fsm  |  vm  | init | pg_table_size | indexes |  total 
+--------+-------+------+------+---------------+---------+--------
+ 253952 | 24576 | 8192 |    0 |        286720 |  196608 | 483328
+(1 row)
+```
+
+From that, you can tell pg_table_size is the sum of all the return values of pg_relation_size. And pg_total_relation_size is the sum of pg_table_size and pg_indexes_size.
+
+If you want to know how much space your tables are using, use pg_table_size and pg_total_relation_size to think about them -- one number is table-only, and one number is table + indexes.
+
+
+## INDEXES
+
+List all indexes in the specific schema
+```
+SELECT
+    tablename,
+    indexname,
+    indexdef
+FROM
+    pg_indexes
+WHERE
+    schemaname = 'public'
+ORDER BY
+    tablename,
+    indexname;
+```
+
+List all inxes on the specific table
+```
+SELECT
+    indexname,
+    indexdef
+FROM
+    pg_indexes
+WHERE
+    tablename = 'table_name';
+```
+
+Size
+```
+SELECT
+    pg_size_pretty (
+        pg_table_size ('spm_data_vesselcode_index')
+    );
+```
 
 
 ## USERS
