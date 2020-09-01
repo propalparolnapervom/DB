@@ -105,6 +105,31 @@ SELECT
     );
 ```
 
+## IMPORT/EXPORT
+
+```
+# PREPARATION
+# Origin DB
+export DB_ORIGIN="tools_concourse6"
+# Destination DB (copy of origin DB, that should be created eventually)
+export DB_DESTIN="tools_concourse604"
+# Create empty destination DB (if absent)
+psql -h postgres.infra.internal -U postgres_user -d postgres -c "CREATE DATABASE tools_concourse604;"
+# Create appropriate DB user (if needed)
+psql -h postgres.infra.internal -U postgres_user -d postgres -c "create user concourse604 with encrypted password 'asdffda'; grant all privileges on database tools_concourse604 to concourse604;"
+
+# EXPORT
+export PGPASSWORD="asdff"
+pg_dump -h postgres.infra.internal -U postgres_user -O -W -d ${DB_ORIGIN}  > dump.sql
+
+
+# IMPORT
+# NB: pay attention to user - it will be owner of the DB objects
+psql -h postgres.infra.internal -U concourse604 -W -d ${DB_DESTIN} -f dump.sql
+
+```
+
+
 ## TABLE
 
 **List**
