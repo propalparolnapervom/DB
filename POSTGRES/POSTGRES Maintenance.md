@@ -419,7 +419,7 @@ List DB privileges
 
 ```
 
-List users and their privileges for a database
+List users and their privileges for a DB ('CREATE', 'CONNECT', 'TEMPORARY'. No privileges on tables)
 ```
 \du
 
@@ -428,6 +428,11 @@ List users and their privileges for a database
 -----------------+--------------+------------------------------------------------
  dba             | Create role  | {util_user,helpdesk_user,helpdesk_admin}
  helpdesk_admin  | Cannot login | {helpdesk_user}
+```
+
+List privileges on Table  ('SELECT', 'INSERT', ...) for a user you are currently connected via
+```
+SELECT table_catalog, table_schema, table_name, privilege_type, grantee FROM   information_schema.table_privileges;
 ```
 
 List specific privileges on the table
