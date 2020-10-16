@@ -329,6 +329,30 @@ GRANT ALL PRIVILEGES ON DATABASE super_awesome_application TO patrick;
 
 **List**
 
+Sho maximum allowed connections (limit)
+```
+SHOW max_connections;
+```
+
+List current amount of sessions
+```
+select count(*)  from pg_stat_activity;
+```
+
+List sessions amount per DB
+```
+SELECT datname, numbackends 
+FROM pg_stat_database 
+ORDER BY numbackends desc;
+
+    OR
+    
+SELECT datname, count(*)
+FROM pg_stat_activity 
+GROUP BY datname 
+ORDER BY count(*) desc;
+```
+
 List all sessions in the specific DB
 ```
 select *
@@ -350,6 +374,15 @@ SELECT *
 FROM pg_stat_activity
 WHERE datname = 'xbsdbname1' 
 AND pid <> pg_backend_pid();
+```
+
+List the count of sessions that run distinct type of query, for specified DB
+```
+SELECT query, count(query)
+FROM pg_stat_activity
+WHERE datname='xbsdbname1'
+GROUP BY query
+ORDER BY count(query) DESC;
 ```
 
 **Terminate**
