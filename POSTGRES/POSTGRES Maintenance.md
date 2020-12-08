@@ -512,4 +512,19 @@ Which users have been granted privileges on the various schema
 
 ```
 
+## QUERY (QUERIES)
+
+List top-heavy queries in the cluster
+```
+CREATE EXTENSION pg_stat_statements;
+
+SELECT round(st.total_time*1000)/1000 AS total_time, 
+       round(st.max_time*1000)/1000 AS max_time, 
+       st.query, db.datname as dbname, 
+       st.calls 
+FROM pg_stat_statements as st, pg_database as db 
+WHERE db.oid=st.dbid 
+ORDER BY total_time DESC 
+LIMIT 100;
+```
 
