@@ -3,7 +3,14 @@
 
 ##  Table itself
 
-Describe table 
+List all tables in the AWS accounts in the current region
+[docs](https://docs.aws.amazon.com/cli/latest/reference/dynamodb/list-tables.html#examples)
+```
+aws dynamodb list-tables
+```
+
+
+Describe specific table 
 [docs](https://docs.aws.amazon.com/cli/latest/reference/dynamodb/describe-table.html#examples)
 ```
 aws dynamodb describe-table \
