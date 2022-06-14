@@ -24,8 +24,9 @@ redis-cli
 
 ## Set key/value
 
+### SET
+
 [SET](https://redis.io/commands/set/)
-[MSET](https://redis.io/commands/mset/)
 
 Set 1 key-value pair
 ```
@@ -34,6 +35,10 @@ redis:6379> SET mykey "Hello"
 redis:6379> GET mykey
 "Hello"
 ```
+
+### MSET
+
+[MSET](https://redis.io/commands/mset/)
 
 Set multiple key-value pairs at one time
 ```
@@ -52,6 +57,8 @@ redis:6379> GET key2
 
 ## Get key/value
 
+### GET
+
 [GET](https://redis.io/commands/get/)
 
 Get `value` for specified `key`
@@ -64,25 +71,78 @@ redis:6379> GET mykey
 "Hello"
 ```
 
+### KEYS
+
+[KEYS](https://redis.io/commands/keys/)
+
+> **NOTE**: DO NOT USE IN PRODUCTION - IT'S HEAVY. Use `SCAN` instead
+
+Return all keys matching specified pattern
+```
+redis:6379> MSET firstname Jack lastname Stuntman age 35
+"OK"
+redis:6379> KEYS *name*
+1) "lastname"
+2) "firstname"
+redis:6379> KEYS a??
+1) "age"
+redis:6379> KEYS *
+1) "lastname"
+2) "age"
+3) "firstname"
+```
+
+### [SCAN](https://redis.io/commands/scan/)
 
 
+
+### [EXISTS](https://redis.io/commands/exists/)
+
+Check whether `keys` exists or not
+```
+redis:6379> SET key1 "Hello"
+"OK"
+redis:6379> EXISTS key1
+(integer) 1
+redis:6379> EXISTS nosuchkey
+(integer) 0
+redis:6379> SET key2 "World"
+"OK"
+redis:6379> EXISTS key1 key2 nosuchkey
+(integer) 2
+```
+
+
+## Delete key
+
+### DEL
+
+[DEL](https://redis.io/commands/del/)
+
+Delete specified `keys`
+```
+redis:6379> SET key1 "Hello"
+"OK"
+redis:6379> SET key2 "World"
+"OK"
+redis:6379> DEL key1 key2
+(integer) 2
+```
 
 ## List
 
-### Informatino about REDIS server
+### INFO
 
 [INFO](https://redis.io/commands/info/)
 
 > **NOTE**: The `INFO` command returns information and statistics about the server.
 
-> **NOTE**: See docs for all available parameters.
-
-All available info (server, clients, mem, cpu, etc)
+All available info regarding REDIS server (server, clients, mem, cpu, etc)
 ```
 INFO
 ```
 
-Info about server
+Info about server only
 ```
 INFO server
 # Server
