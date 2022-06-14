@@ -1,5 +1,9 @@
 # COMMANDS FOR REDIS
 
+[Official Docs](https://redis.io/commands/)
+
+
+
 
 ## Connect
 
@@ -18,11 +22,95 @@ redis-cli
 
 
 
+## Set key/value
+
+[SET](https://redis.io/commands/set/)
+[MSET](https://redis.io/commands/mset/)
+
+Set 1 key-value pair
+```
+redis:6379> SET mykey "Hello"
+"OK"
+redis:6379> GET mykey
+"Hello"
+```
+
+Set multiple key-value pairs at one time
+```
+redis:6379> MSET key1 "Hello" key2 "World"
+"OK"
+redis:6379> GET key1
+"Hello"
+redis:6379> GET key2
+"World"
+```
 
 
 
 
 
+
+## Get key/value
+
+[GET](https://redis.io/commands/get/)
+
+Get `value` for specified `key`
+```
+redis:6379> GET nonexisting
+(nil)
+redis:6379> SET mykey "Hello"
+"OK"
+redis:6379> GET mykey
+"Hello"
+```
+
+
+
+
+## List
+
+### Informatino about REDIS server
+
+[INFO](https://redis.io/commands/info/)
+
+> **NOTE**: The `INFO` command returns information and statistics about the server.
+
+> **NOTE**: See docs for all available parameters.
+
+All available info (server, clients, mem, cpu, etc)
+```
+INFO
+```
+
+Info about server
+```
+INFO server
+# Server
+redis_version:7.0.2
+redis_git_sha1:00000000
+redis_git_dirty:0
+redis_build_id:6549e5aa8dc87aec
+redis_mode:standalone
+os:Linux 5.10.76-linuxkit x86_64
+arch_bits:64
+monotonic_clock:POSIX clock_gettime
+multiplexing_api:epoll
+atomicvar_api:c11-builtin
+gcc_version:10.2.1
+process_id:1
+process_supervised:no
+run_id:ecb0ccc8caa47ebfdfd918d5ad4f8c860eb18b6c
+tcp_port:6379
+server_time_usec:1655199277252393
+uptime_in_seconds:1232
+uptime_in_days:0
+hz:10
+configured_hz:10
+lru_clock:11032109
+executable:/data/redis-server
+config_file:
+io_threads_active:0
+```
 
 
 
