@@ -24,9 +24,7 @@ redis-cli
 
 ## Set key/value
 
-### SET
-
-[SET](https://redis.io/commands/set/)
+### [SET](https://redis.io/commands/set/)
 
 Set 1 key-value pair
 ```
@@ -36,9 +34,7 @@ redis:6379> GET mykey
 "Hello"
 ```
 
-### MSET
-
-[MSET](https://redis.io/commands/mset/)
+### [MSET](https://redis.io/commands/mset/)
 
 Set multiple key-value pairs at one time
 ```
@@ -57,9 +53,7 @@ redis:6379> GET key2
 
 ## Get key/value
 
-### GET
-
-[GET](https://redis.io/commands/get/)
+### [GET](https://redis.io/commands/get/)
 
 Get `value` for specified `key`
 ```
@@ -71,9 +65,7 @@ redis:6379> GET mykey
 "Hello"
 ```
 
-### KEYS
-
-[KEYS](https://redis.io/commands/keys/)
+### [KEYS](https://redis.io/commands/keys/)
 
 > **NOTE**: DO NOT USE IN PRODUCTION - IT'S HEAVY. Use `SCAN` instead
 
@@ -115,9 +107,7 @@ redis:6379> EXISTS key1 key2 nosuchkey
 
 ## Delete key
 
-### DEL
-
-[DEL](https://redis.io/commands/del/)
+### [DEL](https://redis.io/commands/del/)
 
 Delete specified `keys`
 ```
@@ -131,9 +121,7 @@ redis:6379> DEL key1 key2
 
 ## List
 
-### INFO
-
-[INFO](https://redis.io/commands/info/)
+### [INFO](https://redis.io/commands/info/)
 
 > **NOTE**: The `INFO` command returns information and statistics about the server.
 
