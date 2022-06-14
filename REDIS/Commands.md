@@ -18,13 +18,14 @@ redis-cli
 ```
 
 
+# STRING
 
 
+## KEY/VALUE
 
+### Set key/value
 
-## Set key/value
-
-### [SET](https://redis.io/commands/set/)
+#### [SET](https://redis.io/commands/set/)
 
 Set 1 key-value pair
 ```
@@ -34,7 +35,7 @@ redis:6379> GET mykey
 "Hello"
 ```
 
-### [MSET](https://redis.io/commands/mset/)
+#### [MSET](https://redis.io/commands/mset/)
 
 Set multiple key-value pairs at one time
 ```
@@ -51,7 +52,7 @@ redis:6379> GET key2
 
 
 
-## Get key/value
+### Get key/value
 
 ### [GET](https://redis.io/commands/get/)
 
@@ -65,9 +66,18 @@ redis:6379> GET mykey
 "Hello"
 ```
 
-### [KEYS](https://redis.io/commands/keys/)
+#### [KEYS](https://redis.io/commands/keys/)
 
 > **NOTE**: DO NOT USE IN PRODUCTION - IT'S HEAVY. Use `SCAN` instead
+
+Return all keys in the database
+```
+127.0.0.1:6379> keys *
+1) "lastname"
+2) "mykey"
+3) "age"
+4) "firstname"
+```
 
 Return all keys matching specified pattern
 ```
@@ -84,11 +94,11 @@ redis:6379> KEYS *
 3) "firstname"
 ```
 
-### [SCAN](https://redis.io/commands/scan/)
+#### [SCAN](https://redis.io/commands/scan/)
 
 
 
-### [EXISTS](https://redis.io/commands/exists/)
+#### [EXISTS](https://redis.io/commands/exists/)
 
 Check whether `keys` exists or not
 ```
@@ -105,11 +115,11 @@ redis:6379> EXISTS key1 key2 nosuchkey
 ```
 
 
-## Delete key
+### Delete key
 
-### [DEL](https://redis.io/commands/del/)
+#### [DEL](https://redis.io/commands/del/)
 
-Delete specified `keys`
+Delete specified `key`
 ```
 redis:6379> SET key1 "Hello"
 "OK"
@@ -118,6 +128,88 @@ redis:6379> SET key2 "World"
 redis:6379> DEL key1 key2
 (integer) 2
 ```
+
+
+## Expiration
+
+### Set expiration
+
+#### [EXPIRE](https://redis.io/commands/expire/)
+
+> **NOTE**: This is to set timeout for already **existing** key
+
+Set a timeout on key. After the timeout has expired, the key will automatically be deleted. A key with an associated timeout is often said to be volatile in Redis terminology.
+```
+redis:6379> SET mykey "Hello"
+"OK"
+redis:6379> EXPIRE mykey 10
+(integer) 1
+redis:6379> TTL mykey
+(integer) 10
+```
+
+#### [SETEX](https://redis.io/commands/setex/)
+
+> NOTE: This is to create a key and set its timeout (right during its creation).
+> So this command is equivalent to executing the following commands:
+>    SET mykey value
+>    EXPIRE mykey seconds
+
+Set `key` to hold the string `value` and set `key` to timeout after a given number of seconds. 
+```
+redis:6379> SETEX mykey 10 "Hello"
+"OK"
+redis:6379> TTL mykey
+(integer) 10
+redis:6379> GET mykey
+"Hello"
+```
+
+
+
+### Check expiration
+
+#### [TTL](https://redis.io/commands/ttl/)
+
+Returns the remaining time to live of a key that has a timeout.
+```
+redis:6379> SET mykey "Hello"
+"OK"
+redis:6379> EXPIRE mykey 10
+(integer) 1
+redis:6379> TTL mykey
+(integer) 10
+```
+
+The `-1` is returned, if the `key` doesn't have any expiration date
+```
+redis:6379> SET mykey "Hello"
+"OK"
+redis:6379> TTL mykey
+(integer) -1
+```
+
+
+# LIST
+
+[YT video: easy explanation](https://youtu.be/jgpVdJB2sKQ?t=471)
+
+
+
+# SET
+
+[YT video: easy explanation](https://youtu.be/jgpVdJB2sKQ?t=607)
+
+
+
+# HASH
+
+[YT video: easy explanation](https://youtu.be/jgpVdJB2sKQ?t=690)
+
+
+
+
+# SERVER
 
 ## List
 
@@ -161,8 +253,50 @@ io_threads_active:0
 ```
 
 
+# DATABASE
 
 
+## Delete keys from DB
+
+### [FLUSHDB](https://redis.io/commands/flushdb/)
+
+Delete all the keys of the currently selected DB.
+```
+# SYNC (default) 
+# flushes the database synchronously
+FLUSHDB
+  
+  # OR
+  
+FLUSHDB SYNC
+
+# ASYNC
+# flushes the database asynchronously
+# only deletes keys that were present at the time the command was invoked. 
+# Keys created during an asynchronous flush will be unaffected.
+FLUSHDB ASYNC
+```
+
+
+
+### [FLUSHALL](https://redis.io/commands/flushall/)
+
+Delete **all** the keys of all the existing databases, **not just the currently selected one**.
+```
+# SYNC (default) 
+# flushes the databases synchronously
+FLUSHALL
+  
+  # OR
+  
+FLUSHALL SYNC
+
+# ASYNC
+# flushes the databases asynchronously
+# only deletes keys that were present at the time the command was invoked. 
+# Keys created during an asynchronous flush will be unaffected.
+FLUSHALL ASYNC
+```
 
 
 
