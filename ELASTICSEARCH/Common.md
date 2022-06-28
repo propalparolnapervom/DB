@@ -1,0 +1,23 @@
+
+[Basics: How to work with ES](https://medium.com/@animeshblog/elasticsearch-the-beginners-cookbook-1cf30f98218)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
